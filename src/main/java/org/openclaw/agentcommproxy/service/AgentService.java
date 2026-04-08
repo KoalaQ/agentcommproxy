@@ -1,9 +1,7 @@
 package org.openclaw.agentcommproxy.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
-import org.openclaw.agentcommproxy.model.AgentResponse;
 import org.openclaw.agentcommproxy.model.MessageStatus;
 import org.openclaw.agentcommproxy.proxy.CommandProxy;
 import org.openclaw.agentcommproxy.proxy.CommandProxyFactory;
@@ -23,13 +21,11 @@ public class AgentService {
 
     private final ConfigManager configManager;
     private final SQLiteStore store;
-    private final ObjectMapper objectMapper;
     private final CommandProxy proxy;
 
     public AgentService(ConfigManager configManager, SQLiteStore store) {
         this.configManager = configManager;
         this.store = store;
-        this.objectMapper = new ObjectMapper();
         this.proxy = CommandProxyFactory.getDefaultProxy();
     }
 
@@ -138,27 +134,15 @@ public class AgentService {
     public void doCallback(AgentRequest request) {
         log.info("Executing callback for request: {} to sender: {}", request.getId(), request.getSender());
 
-        // 构建回调消息（JSON格式）
-        AgentResponse response = new AgentResponse();
-        response.setRequestId(request.getId());
-        response.setStatus(request.getStatus().name().toLowerCase());
-        response.setResponse(request.getResponse());
-        response.setRequest(new AgentResponse.RequestInfo(
-                request.getSender(),
-                request.getTargetAgent(),
-                request.getMessage()
-        ));
-
-        String callbackMessage;
-        try {
-            callbackMessage = objectMapper.writeValueAsString(response);
-        } catch (Exception e) {
-            log.error("Failed to serialize callback message: {}", e.getMessage());
-            callbackMessage = request.getResponse(); // fallback to raw response
+        // 构建简化的回调消息
+        StringBuilder callbackMessage = new StringBuilder();
+        callbackMessage.append("Request ID: ").append(request.getId()).append("\n");
+        if (request.getResponse() != null && !request.getResponse().isEmpty()) {
+            callbackMessage.append(request.getResponse());
         }
 
         // 执行回调命令
-        CommandResult result = proxy.execute(request.getSender(), callbackMessage, configManager.getDefaultTimeout());
+        CommandResult result = proxy.execute(request.getSender(), callbackMessage.toString(), configManager.getDefaultTimeout());
 
         if (result.isSuccess()) {
             store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_DONE, request.getResponse(), null);
