@@ -1,4 +1,3 @@
-
 # agentproxy
 
 Send message to target agent via agentproxy CLI.
@@ -6,60 +5,44 @@ Send message to target agent via agentproxy CLI.
 ## Usage
 
 ```
-/agentproxy <message>
+/agentproxy --agent <target-agent> --sender <my-agent> <message> [--sync] [--timeout N]
 ```
 
-## Parameters
+## Required Parameters
 
-- `message`: The message to send to the agent
+- `--agent <name>`: Target agent name (required)
+- `--sender <name>`: Your agent name (required)
 
 ## Optional Flags
 
-- `--agent <name>`: Target agent name (default: from config or prompt)
-- `--sender <name>`: Sender agent name (default: current agent name or "claude")
 - `--sync`: Send in sync mode (wait for response)
 - `--timeout <seconds>`: Timeout in seconds (default: 300)
 
 ## Examples
 
 ```bash
-# Send async message
-/agentproxy hello
+# Async message
+/agentproxy --agent AgentB --sender AgentA "hello"
 
-# Send to specific agent
-/agentproxy hello --agent AgentB
-
-# Sync mode
-/agentproxy "please check the status" --agent AgentB --sync
+# Sync message (wait for response)
+/agentproxy --agent AgentB --sender AgentA "check status" --sync
 
 # With timeout
-/agentproxy "long running task" --agent AgentB --timeout 600
-```
-
-## Configuration
-
-Set default agent in `.claude/settings.json`:
-```json
-{
-  "agentproxy": {
-    "defaultAgent": "pijiang-test",
-    "defaultSender": "claude",
-    "defaultTimeout": 300
-  }
-}
+/agentproxy --agent AgentB --sender AgentA "long task" --timeout 600 --sync
 ```
 
 ## Implementation
 
 When this skill is invoked:
 
-1. Parse the message and optional flags from user input
-2. Get default agent/sender from config if not specified
-3. Build the command:
+1. Parse required parameters: `--agent` and `--sender`
+2. Parse message content
+3. Parse optional flags: `--sync`, `--timeout`
+4. Build and execute command:
    ```bash
-   agentproxy agent --agent <agent> --message "<message>" --sender <sender> [--sync] [--timeout N]
+   agentproxy agent --agent <target-agent> --sender <my-agent> --message "<message>" [--sync] [--timeout N]
    ```
-4. Execute the command and return the result
+5. Return the result to user
 
 ## Output
 
@@ -70,5 +53,15 @@ When this skill is invoked:
 
 **Sync mode:**
 ```
-<agent response>
+Request ID: <request-id>
+Sender: <my-agent>
+Target Agent: <target-agent>
+Message: <message>
+Response: <response>
 ```
+
+## Error Handling
+
+- If `--agent` not specified: Prompt user "Please specify target agent with --agent <name>"
+- If `--sender` not specified: Prompt user "Please specify your agent name with --sender <name>"
+- If command fails: Show error message
