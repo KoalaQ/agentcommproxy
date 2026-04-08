@@ -24,6 +24,7 @@ public class ConfigManager {
     private static final int DEFAULT_ASYNC_RETRY_INTERVAL = 5;
     private static final int DEFAULT_TIMEOUT = 300;
     private static final int DEFAULT_DAEMON_INTERVAL = 5;
+    private static final int DEFAULT_DAEMON_POOL_SIZE = 4;
 
     private Properties properties;
     private Path configPath;
@@ -61,6 +62,7 @@ public class ConfigManager {
         properties.setProperty("async.retry.interval", String.valueOf(DEFAULT_ASYNC_RETRY_INTERVAL));
         properties.setProperty("default.timeout", String.valueOf(DEFAULT_TIMEOUT));
         properties.setProperty("daemon.interval", String.valueOf(DEFAULT_DAEMON_INTERVAL));
+        properties.setProperty("daemon.pool.size", String.valueOf(DEFAULT_DAEMON_POOL_SIZE));
         properties.setProperty("db.path", Paths.get(System.getProperty("user.home"), CONFIG_DIR, DB_FILE).toString());
     }
 
@@ -90,6 +92,10 @@ public class ConfigManager {
 
     public int getDaemonInterval() {
         return getInt("daemon.interval", DEFAULT_DAEMON_INTERVAL);
+    }
+
+    public int getDaemonPoolSize() {
+        return getInt("daemon.pool.size", DEFAULT_DAEMON_POOL_SIZE);
     }
 
     public String getDbPath() {
