@@ -4,6 +4,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
 import org.openclaw.agentcommproxy.command.AgentCommand;
+import org.openclaw.agentcommproxy.command.ClearCommand;
 import org.openclaw.agentcommproxy.command.DaemonCommand;
 import org.openclaw.agentcommproxy.command.ListCommand;
 import org.openclaw.agentcommproxy.command.StatusCommand;
@@ -14,6 +15,7 @@ import org.openclaw.agentcommproxy.command.StatusCommand;
     description = "Agent Communication Proxy CLI",
     subcommands = {
         AgentCommand.class,
+        ClearCommand.class,
         DaemonCommand.class,
         ListCommand.class,
         StatusCommand.class

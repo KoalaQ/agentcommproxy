@@ -317,6 +317,84 @@ public class SQLiteStore {
         }
     }
 
+    /**
+     * 清空所有消息记录
+     */
+    public int clearAll() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            // 先清空重试队列（外键约束）
+            stmt.execute("DELETE FROM retry_queue");
+            // 再清空请求记录
+            int count = stmt.executeUpdate("DELETE FROM requests");
+
+            log.info("Cleared all messages: {} records deleted", count);
+            return count;
+        } catch (SQLException e) {
+            log.error("Failed to clear all messages: {}", e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * 清空指定状态的消息记录
+     */
+    public int clearByStatus(String status) {
+        try (Connection conn = getConnection()) {
+
+            // 先从重试队列删除
+            String deleteRetrySql = "DELETE FROM retry_queue WHERE request_id IN " +
+                "(SELECT id FROM requests WHERE status = ?)";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRetrySql)) {
+                ps.setString(1, status.toUpperCase());
+                ps.executeUpdate();
+            }
+
+            // 再删除请求记录
+            String deleteRequestsSql = "DELETE FROM requests WHERE status = ?";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRequestsSql)) {
+                ps.setString(1, status.toUpperCase());
+                int count = ps.executeUpdate();
+                log.info("Cleared messages with status {}: {} records deleted", status, count);
+                return count;
+            }
+        } catch (SQLException e) {
+            log.error("Failed to clear messages by status: {}", e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * 清空指定请求ID的消息
+     */
+    public boolean clearById(String requestId) {
+        try (Connection conn = getConnection()) {
+
+            // 先从重试队列删除
+            String deleteRetrySql = "DELETE FROM retry_queue WHERE request_id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRetrySql)) {
+                ps.setString(1, requestId);
+                ps.executeUpdate();
+            }
+
+            // 再删除请求记录
+            String deleteRequestSql = "DELETE FROM requests WHERE id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRequestSql)) {
+                ps.setString(1, requestId);
+                int count = ps.executeUpdate();
+                if (count > 0) {
+                    log.info("Cleared message: {}", requestId);
+                    return true;
+                }
+                return false;
+            }
+        } catch (SQLException e) {
+            log.error("Failed to clear message by id: {}", e.getMessage());
+            return false;
+        }
+    }
+
     private AgentRequest mapRequest(ResultSet rs) throws SQLException {
         AgentRequest request = new AgentRequest();
         request.setId(rs.getString("id"));
