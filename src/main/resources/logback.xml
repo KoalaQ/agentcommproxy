@@ -3,13 +3,6 @@
     <!-- 日志文件路径 -->
     <property name="LOG_HOME" value="${user.home}/.agentcommproxy/logs" />
 
-    <!-- 控制台输出 -->
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
     <!-- 文件输出 - 所有日志 -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_HOME}/agentproxy.log</file>
@@ -39,8 +32,8 @@
         </filter>
     </appender>
 
+    <!-- 不输出到控制台，只输出到文件 -->
     <root level="INFO">
-        <appender-ref ref="STDOUT" />
         <appender-ref ref="FILE" />
         <appender-ref ref="ERROR_FILE" />
     </root>
