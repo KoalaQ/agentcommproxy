@@ -100,10 +100,14 @@ public class AgentService {
     public void processCallback(AgentRequest request) {
         log.info("Callback request: {} to sender: {}", request.getId(), request.getSender());
 
+        // 构建回调消息
         StringBuilder callbackMessage = new StringBuilder();
         callbackMessage.append("Request ID: ").append(request.getId()).append("\n");
+        callbackMessage.append("Sender: ").append(request.getSender()).append("\n");
+        callbackMessage.append("Target Agent: ").append(request.getTargetAgent()).append("\n");
+        callbackMessage.append("Message: ").append(request.getMessage()).append("\n");
         if (request.getResponse() != null && !request.getResponse().isEmpty()) {
-            callbackMessage.append(request.getResponse());
+            callbackMessage.append("Response: ").append(request.getResponse());
         }
 
         CommandResult result = proxy.execute(request.getSender(), callbackMessage.toString(), configManager.getDefaultTimeout());
