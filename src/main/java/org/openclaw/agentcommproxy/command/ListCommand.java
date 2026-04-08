@@ -21,6 +21,9 @@ public class ListCommand implements Callable<Integer> {
     @Option(names = {"--status"}, description = "Filter by status (PENDING/RUNNING/SUCCESS/FAILED/TIMEOUT/CALLBACK_PENDING/CALLBACK_DONE)")
     private String statusFilter;
 
+    @Option(names = {"--full"}, description = "Show full message and response (no truncation)")
+    private boolean full;
+
     @Override
     public Integer call() {
         ConfigManager configManager = new ConfigManager();
@@ -37,28 +40,63 @@ public class ListCommand implements Callable<Integer> {
 
         System.out.println("Found " + requests.size() + " records:");
         System.out.println("");
-        System.out.println("------------------------------------------------------------------------------------------------------------------------");
-        System.out.printf("%-36s %-10s %-15s %-15s %-15s %-8s %-5s%n",
-            "Request ID", "Status", "Sender", "Target", "Message", "Sync", "Retry");
-        System.out.println("------------------------------------------------------------------------------------------------------------------------");
 
         for (AgentRequest r : requests) {
-            String messagePreview = r.getMessage() != null && r.getMessage().length() > 15
-                ? r.getMessage().substring(0, 15) + "..."
-                : r.getMessage();
-            System.out.printf("%-36s %-10s %-15s %-15s %-15s %-8s %-5d%n",
-                r.getId(),
-                r.getStatus(),
-                r.getSender(),
-                r.getTargetAgent(),
-                messagePreview,
-                r.isSync() ? "YES" : "NO",
-                r.getRetryCount());
+            System.out.println("--------------------------------------------------------------------------------");
+            System.out.println("Request ID:  " + r.getId());
+            System.out.println("Status:      " + r.getStatus());
+            System.out.println("Sender:      " + r.getSender());
+            System.out.println("Target:      " + r.getTargetAgent());
+            System.out.println("Sync:        " + (r.isSync() ? "YES" : "NO"));
+            System.out.println("Timeout:     " + r.getTimeout() + "s");
+            System.out.println("Retry Count: " + r.getRetryCount());
+
+            // Message
+            String message = r.getMessage();
+            if (message != null && !message.isEmpty()) {
+                if (full) {
+                    System.out.println("Message:     " + message);
+                } else {
+                    System.out.println("Message:     " + truncate(message, 50));
+                }
+            }
+
+            // Response
+            String response = r.getResponse();
+            if (response != null && !response.isEmpty()) {
+                if (full) {
+                    System.out.println("Response:    " + response);
+                } else {
+                    System.out.println("Response:    " + truncate(response, 50));
+                }
+            }
+
+            // Error
+            String error = r.getError();
+            if (error != null && !error.isEmpty()) {
+                System.out.println("Error:       " + error);
+            }
         }
-        System.out.println("------------------------------------------------------------------------------------------------------------------------");
+
+        System.out.println("--------------------------------------------------------------------------------");
         System.out.println("");
+        System.out.println("Total: " + requests.size() + " records");
         System.out.println("Database: " + configManager.getDbPath());
+        System.out.println("");
+        System.out.println("Tips: Use --full to show full content, --limit N to limit records");
 
         return 0;
+    }
+
+    private String truncate(String str, int maxLen) {
+        if (str == null) {
+            return "";
+        }
+        // 移除换行符，单行显示
+        String singleLine = str.replace("\n", " ").replace("\r", "");
+        if (singleLine.length() <= maxLen) {
+            return singleLine;
+        }
+        return singleLine.substring(0, maxLen) + "...";
     }
 }
