@@ -34,7 +34,8 @@ public class StatusCommand implements Callable<Integer> {
         System.out.println("Sender: " + r.getSender());
         System.out.println("Target Agent: " + r.getTargetAgent());
         System.out.println("Message: " + r.getMessage());
-        System.out.println("Retry Count: " + r.getRetryCount());
+        System.out.println("Execute Retry: " + r.getExecuteRetryCount());
+        System.out.println("Callback Retry: " + r.getCallbackRetryCount());
 
         if (r.getResponse() != null) {
             System.out.println("Response: " + r.getResponse());

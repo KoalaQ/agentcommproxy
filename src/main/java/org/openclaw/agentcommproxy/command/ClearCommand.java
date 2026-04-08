@@ -16,7 +16,7 @@ public class ClearCommand implements Callable<Integer> {
     @Option(names = {"--all"}, description = "Clear all messages")
     private boolean clearAll;
 
-    @Option(names = {"--status"}, description = "Clear messages by status (PENDING/RUNNING/SUCCESS/FAILED/TIMEOUT/CALLBACK_PENDING/CALLBACK_DONE)")
+    @Option(names = {"--status"}, description = "Clear messages by status (PENDING/EXECUTING/EXECUTE_SUCCESS/EXECUTE_FAILED/EXECUTE_TIMEOUT/CALLBACKING/CALLBACK_FAILED/DONE/ERROR)")
     private String status;
 
     @Option(names = {"--request-id"}, description = "Clear specific message by request ID")
@@ -42,7 +42,8 @@ public class ClearCommand implements Callable<Integer> {
             System.out.println("");
             System.out.println("Examples:");
             System.out.println("  agentproxy clear --all");
-            System.out.println("  agentproxy clear --status SUCCESS");
+            System.out.println("  agentproxy clear --status DONE");
+            System.out.println("  agentproxy clear --status ERROR");
             System.out.println("  agentproxy clear --request-id xxx-xxx-xxx");
             System.out.println("  agentproxy clear --all -y  # skip confirmation");
             return 0;

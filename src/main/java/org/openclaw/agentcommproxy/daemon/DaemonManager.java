@@ -22,6 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DaemonManager {
     private static final Logger log = LoggerFactory.getLogger(DaemonManager.class);
 
+    private static final String RETRY_TYPE_EXECUTE = "EXECUTE";
+    private static final String RETRY_TYPE_CALLBACK = "CALLBACK";
+
     private static DaemonManager instance;
 
     private final ConfigManager configManager;
@@ -29,7 +32,7 @@ public class DaemonManager {
     private final AgentService agentService;
 
     private ScheduledExecutorService scheduler;
-    private ExecutorService workerPool;  // 工作线程池
+    private ExecutorService workerPool;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private int interval;
     private int poolSize;
@@ -51,8 +54,6 @@ public class DaemonManager {
 
     /**
      * 启动守护线程
-     * @param customInterval 自定义间隔
-     * @param foreground 是否前台运行（阻塞主线程）
      */
     public void start(Integer customInterval, boolean foreground) {
         if (running.get()) {
@@ -64,14 +65,12 @@ public class DaemonManager {
             this.interval = customInterval;
         }
 
-        // 创建工作线程池
         workerPool = Executors.newFixedThreadPool(poolSize, r -> {
             Thread t = new Thread(r, "agentcommproxy-worker");
             t.setDaemon(true);
             return t;
         });
 
-        // 创建调度器
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "agentcommproxy-daemon");
             t.setDaemon(!foreground);
@@ -81,9 +80,8 @@ public class DaemonManager {
         running.set(true);
         scheduler.scheduleAtFixedRate(this::processPendingMessages, 0, interval, TimeUnit.SECONDS);
 
-        log.info("Daemon started, interval: {} seconds, pool size: {}, foreground: {}", interval, poolSize, foreground);
+        log.info("Daemon started, interval: {}s, pool size: {}, foreground: {}", interval, poolSize, foreground);
 
-        // 如果是前台模式，阻塞主线程
         if (foreground) {
             try {
                 log.info("Daemon running in foreground mode, press Ctrl+C to stop");
@@ -95,9 +93,6 @@ public class DaemonManager {
         }
     }
 
-    /**
-     * 启动守护线程（默认后台模式）
-     */
     public void start(Integer customInterval) {
         start(customInterval, false);
     }
@@ -113,7 +108,6 @@ public class DaemonManager {
 
         running.set(false);
 
-        // 停止调度器
         if (scheduler != null) {
             scheduler.shutdown();
             try {
@@ -123,7 +117,6 @@ public class DaemonManager {
             }
         }
 
-        // 停止工作线程池
         if (workerPool != null) {
             workerPool.shutdown();
             try {
@@ -136,23 +129,14 @@ public class DaemonManager {
         log.info("Daemon stopped");
     }
 
-    /**
-     * 是否运行中
-     */
     public boolean isRunning() {
         return running.get();
     }
 
-    /**
-     * 获取扫描间隔
-     */
     public int getInterval() {
         return interval;
     }
 
-    /**
-     * 获取线程池大小
-     */
     public int getPoolSize() {
         return poolSize;
     }
@@ -168,30 +152,31 @@ public class DaemonManager {
         log.debug("Checking pending messages...");
 
         try {
-            // 1. 处理待发送请求 (PENDING)
+            int maxRetry = configManager.getAsyncRetryCount();
+
+            // 1. 处理新请求 (PENDING)
             List<AgentRequest> pendingRequests = store.getPendingRequests();
             for (AgentRequest request : pendingRequests) {
                 if (request.getStatus() == MessageStatus.PENDING) {
-                    // 先更新状态为 RUNNING，防止重复扫描
-                    store.updateRequestStatus(request.getId(), MessageStatus.RUNNING, null, null);
+                    // 更新状态为 EXECUTING
+                    store.updateRequestStatus(request.getId(), MessageStatus.EXECUTING, null, null);
 
-                    // 提交到线程池异步处理
                     final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            // 重新从数据库加载最新状态
-                            store.getRequestById(requestId).ifPresent(agentService::processRequest);
+                            store.getRequestById(requestId).ifPresent(agentService::processExecute);
                         } catch (Exception e) {
-                            log.error("Error processing request {}: {}", requestId, e.getMessage());
+                            log.error("Error executing request {}: {}", requestId, e.getMessage());
                         }
                     });
-                } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
-                    // 先更新状态，防止重复扫描（保持 CALLBACK_PENDING，通过数据库行处理）
-                    // 提交到线程池异步处理
+                } else if (request.getStatus() == MessageStatus.EXECUTE_SUCCESS) {
+                    // 更新状态为 CALLBACKING
+                    store.updateRequestStatus(request.getId(), MessageStatus.CALLBACKING, request.getResponse(), null);
+
                     final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            store.getRequestById(requestId).ifPresent(agentService::doCallback);
+                            store.getRequestById(requestId).ifPresent(agentService::processCallback);
                         } catch (Exception e) {
                             log.error("Error callback request {}: {}", requestId, e.getMessage());
                         }
@@ -199,44 +184,56 @@ public class DaemonManager {
                 }
             }
 
-            // 2. 处理待重试请求（区分执行失败和回调失败）
+            // 2. 处理重试请求
             List<AgentRequest> retryRequests = store.getRetryRequests();
             for (AgentRequest request : retryRequests) {
-                if (request.getStatus() == MessageStatus.FAILED) {
-                    // 先更新状态为 RUNNING
-                    store.updateRequestStatus(request.getId(), MessageStatus.RUNNING, null, null);
+                MessageStatus status = request.getStatus();
+
+                if (status == MessageStatus.EXECUTE_FAILED || status == MessageStatus.EXECUTE_TIMEOUT) {
+                    // 执行重试
+                    int retryCount = request.getExecuteRetryCount();
                     store.removeFromRetryQueue(request.getId());
 
-                    // 提交到线程池异步处理
-                    final String requestId = request.getId();
-                    workerPool.submit(() -> {
-                        try {
-                            store.getRequestById(requestId).ifPresent(agentService::processRequest);
-                        } catch (Exception e) {
-                            log.error("Error retrying request {}: {}", requestId, e.getMessage());
-                        }
-                    });
-                } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
-                    // 先从重试队列移除
+                    if (retryCount < maxRetry) {
+                        store.updateRequestStatus(request.getId(), MessageStatus.EXECUTING, null, null);
+
+                        final String requestId = request.getId();
+                        workerPool.submit(() -> {
+                            try {
+                                store.getRequestById(requestId).ifPresent(agentService::processExecute);
+                            } catch (Exception e) {
+                                log.error("Error retrying execute {}: {}", requestId, e.getMessage());
+                            }
+                        });
+                    } else {
+                        store.updateRequestStatus(request.getId(), MessageStatus.ERROR, null, "Max retries reached");
+                        log.warn("Execute max retries reached: {}", request.getId());
+                    }
+                } else if (status == MessageStatus.CALLBACK_FAILED) {
+                    // 回调重试
+                    int retryCount = request.getCallbackRetryCount();
                     store.removeFromRetryQueue(request.getId());
 
-                    // 提交到线程池异步处理
-                    final String requestId = request.getId();
-                    workerPool.submit(() -> {
-                        try {
-                            store.getRequestById(requestId).ifPresent(agentService::doCallback);
-                        } catch (Exception e) {
-                            log.error("Error retrying callback {}: {}", requestId, e.getMessage());
-                        }
-                    });
+                    if (retryCount < maxRetry) {
+                        store.updateRequestStatus(request.getId(), MessageStatus.CALLBACKING, request.getResponse(), null);
+
+                        final String requestId = request.getId();
+                        workerPool.submit(() -> {
+                            try {
+                                store.getRequestById(requestId).ifPresent(agentService::processCallback);
+                            } catch (Exception e) {
+                                log.error("Error retrying callback {}: {}", requestId, e.getMessage());
+                            }
+                        });
+                    } else {
+                        store.updateRequestStatus(request.getId(), MessageStatus.ERROR, request.getResponse(), "Callback max retries reached");
+                        log.warn("Callback max retries reached: {}", request.getId());
+                    }
                 }
             }
 
-            if (pendingRequests.isEmpty() && retryRequests.isEmpty()) {
-                log.debug("No pending messages to process");
-            } else {
-                log.info("Submitted {} pending requests and {} retry requests to thread pool",
-                        pendingRequests.size(), retryRequests.size());
+            if (!pendingRequests.isEmpty() || !retryRequests.isEmpty()) {
+                log.info("Processed {} pending, {} retry requests", pendingRequests.size(), retryRequests.size());
             }
 
         } catch (Exception e) {

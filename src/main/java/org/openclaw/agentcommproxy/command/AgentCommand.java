@@ -62,7 +62,7 @@ public class AgentCommand implements Callable<Integer> {
             // 同步模式：立即执行并返回结果
             AgentRequest result = agentService.sendSync(request);
 
-            if (result.getStatus() == MessageStatus.SUCCESS) {
+            if (result.getStatus() == MessageStatus.DONE) {
                 System.out.println(result.getResponse());
                 return 0;
             } else {

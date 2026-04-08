@@ -25,7 +25,6 @@ public class SQLiteStore {
     public SQLiteStore(ConfigManager configManager) {
         this.configManager = configManager;
         this.dbPath = configManager.getDbPath();
-        // 加载 SQLite JDBC driver
         try {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
@@ -52,7 +51,8 @@ public class SQLiteStore {
                 "status TEXT DEFAULT 'PENDING', " +
                 "response TEXT, " +
                 "error TEXT, " +
-                "retry_count INTEGER DEFAULT 0, " +
+                "execute_retry_count INTEGER DEFAULT 0, " +
+                "callback_retry_count INTEGER DEFAULT 0, " +
                 "sync INTEGER DEFAULT 0, " +
                 "timeout INTEGER DEFAULT 300, " +
                 "created_at INTEGER, " +
@@ -63,6 +63,7 @@ public class SQLiteStore {
                 "CREATE TABLE IF NOT EXISTS retry_queue (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "request_id TEXT NOT NULL, " +
+                "retry_type TEXT NOT NULL, " +
                 "next_retry_at INTEGER, " +
                 "retry_count INTEGER DEFAULT 0, " +
                 "FOREIGN KEY (request_id) REFERENCES requests(id)" +
@@ -71,6 +72,18 @@ public class SQLiteStore {
             Statement stmt = conn.createStatement();
             stmt.execute(createRequestsTable);
             stmt.execute(createRetryTable);
+
+            // 迁移旧表结构（添加新字段）
+            try {
+                stmt.execute("ALTER TABLE requests ADD COLUMN execute_retry_count INTEGER DEFAULT 0");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE requests ADD COLUMN callback_retry_count INTEGER DEFAULT 0");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE retry_queue ADD COLUMN retry_type TEXT DEFAULT 'EXECUTE'");
+            } catch (SQLException ignored) {}
+
             log.info("Database initialized at: {}", dbPath);
         } catch (SQLException e) {
             log.error("Failed to initialize database: {}", e.getMessage());
@@ -92,8 +105,8 @@ public class SQLiteStore {
 
         String sql =
             "INSERT OR REPLACE INTO requests " +
-            "(id, sender, target_agent, message, status, response, error, retry_count, sync, timeout, created_at, updated_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "(id, sender, target_agent, message, status, response, error, execute_retry_count, callback_retry_count, sync, timeout, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -105,11 +118,12 @@ public class SQLiteStore {
             ps.setString(5, request.getStatus().name());
             ps.setString(6, request.getResponse());
             ps.setString(7, request.getError());
-            ps.setInt(8, request.getRetryCount());
-            ps.setInt(9, request.isSync() ? 1 : 0);
-            ps.setInt(10, request.getTimeout());
-            ps.setLong(11, request.getCreatedAt());
-            ps.setLong(12, Instant.now().toEpochMilli());
+            ps.setInt(8, request.getExecuteRetryCount());
+            ps.setInt(9, request.getCallbackRetryCount());
+            ps.setInt(10, request.isSync() ? 1 : 0);
+            ps.setInt(11, request.getTimeout());
+            ps.setLong(12, request.getCreatedAt());
+            ps.setLong(13, Instant.now().toEpochMilli());
 
             ps.executeUpdate();
             log.debug("Saved request: {}", request.getId());
@@ -143,23 +157,23 @@ public class SQLiteStore {
     }
 
     /**
-     * 获取待处理请求（用于后台线程处理）
+     * 获取待处理请求
      */
     public List<AgentRequest> getPendingRequests() {
-        String sql = "SELECT * FROM requests WHERE status = 'PENDING' OR status = 'CALLBACK_PENDING'";
+        String sql = "SELECT * FROM requests WHERE status IN ('PENDING', 'EXECUTE_SUCCESS')";
 
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
-            List<AgentRequest> requests = new ArrayList<AgentRequest>();
+            List<AgentRequest> requests = new ArrayList<>();
             while (rs.next()) {
                 requests.add(mapRequest(rs));
             }
             return requests;
         } catch (SQLException e) {
             log.error("Failed to get pending requests: {}", e.getMessage());
-            return new ArrayList<AgentRequest>();
+            return new ArrayList<>();
         }
     }
 
@@ -171,7 +185,7 @@ public class SQLiteStore {
         String sql =
             "SELECT r.* FROM requests r " +
             "JOIN retry_queue q ON r.id = q.request_id " +
-            "WHERE q.next_retry_at <= ? AND (r.status = 'FAILED' OR r.status = 'CALLBACK_PENDING')";
+            "WHERE q.next_retry_at <= ?";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -179,14 +193,14 @@ public class SQLiteStore {
             ps.setLong(1, now);
             ResultSet rs = ps.executeQuery();
 
-            List<AgentRequest> requests = new ArrayList<AgentRequest>();
+            List<AgentRequest> requests = new ArrayList<>();
             while (rs.next()) {
                 requests.add(mapRequest(rs));
             }
             return requests;
         } catch (SQLException e) {
             log.error("Failed to get retry requests: {}", e.getMessage());
-            return new ArrayList<AgentRequest>();
+            return new ArrayList<>();
         }
     }
 
@@ -215,10 +229,10 @@ public class SQLiteStore {
     }
 
     /**
-     * 增加重试计数
+     * 增加执行重试计数
      */
-    public void incrementRetryCount(String id) {
-        String sql = "UPDATE requests SET retry_count = retry_count + 1, updated_at = ? WHERE id = ?";
+    public void incrementExecuteRetryCount(String id) {
+        String sql = "UPDATE requests SET execute_retry_count = execute_retry_count + 1, updated_at = ? WHERE id = ?";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -227,21 +241,39 @@ public class SQLiteStore {
             ps.setString(2, id);
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.error("Failed to increment retry count: {}", e.getMessage());
+            log.error("Failed to increment execute retry count: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 增加回调重试计数
+     */
+    public void incrementCallbackRetryCount(String id) {
+        String sql = "UPDATE requests SET callback_retry_count = callback_retry_count + 1, updated_at = ? WHERE id = ?";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setLong(1, Instant.now().toEpochMilli());
+            ps.setString(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            log.error("Failed to increment callback retry count: {}", e.getMessage());
         }
     }
 
     /**
      * 添加到重试队列
      */
-    public void addToRetryQueue(String requestId, long nextRetryAt) {
-        String sql = "INSERT INTO retry_queue (request_id, next_retry_at, retry_count) VALUES (?, ?, 0)";
+    public void addToRetryQueue(String requestId, String retryType, long nextRetryAt) {
+        String sql = "INSERT INTO retry_queue (request_id, retry_type, next_retry_at, retry_count) VALUES (?, ?, ?, 0)";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, requestId);
-            ps.setLong(2, nextRetryAt);
+            ps.setString(2, retryType);
+            ps.setLong(3, nextRetryAt);
             ps.executeUpdate();
         } catch (SQLException e) {
             log.error("Failed to add to retry queue: {}", e.getMessage());
@@ -286,14 +318,14 @@ public class SQLiteStore {
             }
 
             ResultSet rs = ps.executeQuery();
-            List<AgentRequest> requests = new ArrayList<AgentRequest>();
+            List<AgentRequest> requests = new ArrayList<>();
             while (rs.next()) {
                 requests.add(mapRequest(rs));
             }
             return requests;
         } catch (SQLException e) {
             log.error("Failed to get all requests: {}", e.getMessage());
-            return new ArrayList<AgentRequest>();
+            return new ArrayList<>();
         }
     }
 
@@ -324,9 +356,7 @@ public class SQLiteStore {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // 先清空重试队列（外键约束）
             stmt.execute("DELETE FROM retry_queue");
-            // 再清空请求记录
             int count = stmt.executeUpdate("DELETE FROM requests");
 
             log.info("Cleared all messages: {} records deleted", count);
@@ -343,7 +373,6 @@ public class SQLiteStore {
     public int clearByStatus(String status) {
         try (Connection conn = getConnection()) {
 
-            // 先从重试队列删除
             String deleteRetrySql = "DELETE FROM retry_queue WHERE request_id IN " +
                 "(SELECT id FROM requests WHERE status = ?)";
             try (PreparedStatement ps = conn.prepareStatement(deleteRetrySql)) {
@@ -351,7 +380,6 @@ public class SQLiteStore {
                 ps.executeUpdate();
             }
 
-            // 再删除请求记录
             String deleteRequestsSql = "DELETE FROM requests WHERE status = ?";
             try (PreparedStatement ps = conn.prepareStatement(deleteRequestsSql)) {
                 ps.setString(1, status.toUpperCase());
@@ -371,14 +399,12 @@ public class SQLiteStore {
     public boolean clearById(String requestId) {
         try (Connection conn = getConnection()) {
 
-            // 先从重试队列删除
             String deleteRetrySql = "DELETE FROM retry_queue WHERE request_id = ?";
             try (PreparedStatement ps = conn.prepareStatement(deleteRetrySql)) {
                 ps.setString(1, requestId);
                 ps.executeUpdate();
             }
 
-            // 再删除请求记录
             String deleteRequestSql = "DELETE FROM requests WHERE id = ?";
             try (PreparedStatement ps = conn.prepareStatement(deleteRequestSql)) {
                 ps.setString(1, requestId);
@@ -401,10 +427,37 @@ public class SQLiteStore {
         request.setSender(rs.getString("sender"));
         request.setTargetAgent(rs.getString("target_agent"));
         request.setMessage(rs.getString("message"));
-        request.setStatus(MessageStatus.valueOf(rs.getString("status")));
+        try {
+            request.setStatus(MessageStatus.valueOf(rs.getString("status")));
+        } catch (IllegalArgumentException e) {
+            // 兼容旧状态
+            String status = rs.getString("status");
+            if ("SUCCESS".equals(status)) {
+                request.setStatus(MessageStatus.EXECUTE_SUCCESS);
+            } else if ("FAILED".equals(status)) {
+                request.setStatus(MessageStatus.EXECUTE_FAILED);
+            } else if ("TIMEOUT".equals(status)) {
+                request.setStatus(MessageStatus.EXECUTE_TIMEOUT);
+            } else if ("CALLBACK_PENDING".equals(status)) {
+                request.setStatus(MessageStatus.CALLBACK_FAILED);
+            } else if ("CALLBACK_DONE".equals(status)) {
+                request.setStatus(MessageStatus.DONE);
+            } else {
+                request.setStatus(MessageStatus.PENDING);
+            }
+        }
         request.setResponse(rs.getString("response"));
         request.setError(rs.getString("error"));
-        request.setRetryCount(rs.getInt("retry_count"));
+        try {
+            request.setExecuteRetryCount(rs.getInt("execute_retry_count"));
+        } catch (SQLException e) {
+            request.setExecuteRetryCount(0);
+        }
+        try {
+            request.setCallbackRetryCount(rs.getInt("callback_retry_count"));
+        } catch (SQLException e) {
+            request.setCallbackRetryCount(0);
+        }
         request.setSync(rs.getInt("sync") == 1);
         request.setTimeout(rs.getInt("timeout"));
         request.setCreatedAt(rs.getLong("created_at"));

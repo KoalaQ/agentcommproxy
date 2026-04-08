@@ -18,7 +18,7 @@ public class ListCommand implements Callable<Integer> {
     @Option(names = {"--limit"}, description = "Limit number of records (default 10)")
     private int limit = 10;
 
-    @Option(names = {"--status"}, description = "Filter by status (PENDING/RUNNING/SUCCESS/FAILED/TIMEOUT/CALLBACK_PENDING/CALLBACK_DONE)")
+    @Option(names = {"--status"}, description = "Filter by status (PENDING/EXECUTING/EXECUTE_SUCCESS/EXECUTE_FAILED/EXECUTE_TIMEOUT/CALLBACKING/CALLBACK_FAILED/DONE/ERROR)")
     private String statusFilter;
 
     @Option(names = {"--full"}, description = "Show full message and response (no truncation)")
@@ -49,7 +49,8 @@ public class ListCommand implements Callable<Integer> {
             System.out.println("Target:      " + r.getTargetAgent());
             System.out.println("Sync:        " + (r.isSync() ? "YES" : "NO"));
             System.out.println("Timeout:     " + r.getTimeout() + "s");
-            System.out.println("Retry Count: " + r.getRetryCount());
+            System.out.println("Exec Retry:  " + r.getExecuteRetryCount());
+            System.out.println("Callback Retry: " + r.getCallbackRetryCount());
 
             // Message
             String message = r.getMessage();

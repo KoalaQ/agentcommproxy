@@ -6,22 +6,24 @@ import java.time.Instant;
  * 请求消息实体
  */
 public class AgentRequest {
-    private String id;              // 请求唯一ID
-    private String sender;          // 发送方 Agent
-    private String targetAgent;     // 目标 Agent
-    private String message;         // 消息内容
-    private MessageStatus status;   // 状态
-    private String response;        // 响应内容
-    private String error;           // 错误信息
-    private int retryCount;         // 重试次数
-    private boolean sync;           // 是否同步
-    private int timeout;            // 超时时间（秒）
-    private long createdAt;         // 创建时间戳
-    private long updatedAt;         // 更新时间戳
+    private String id;                  // 请求唯一ID
+    private String sender;              // 发送方 Agent
+    private String targetAgent;         // 目标 Agent
+    private String message;             // 消息内容
+    private MessageStatus status;       // 状态
+    private String response;            // 响应内容
+    private String error;               // 错误信息
+    private int executeRetryCount;      // 执行重试次数
+    private int callbackRetryCount;     // 回调重试次数
+    private boolean sync;               // 是否同步
+    private int timeout;                // 超时时间（秒）
+    private long createdAt;             // 创建时间戳
+    private long updatedAt;             // 更新时间戳
 
     public AgentRequest() {
         this.status = MessageStatus.PENDING;
-        this.retryCount = 0;
+        this.executeRetryCount = 0;
+        this.callbackRetryCount = 0;
         this.sync = false;
         this.timeout = 300;
         this.createdAt = Instant.now().toEpochMilli();
@@ -50,8 +52,11 @@ public class AgentRequest {
     public String getError() { return error; }
     public void setError(String error) { this.error = error; }
 
-    public int getRetryCount() { return retryCount; }
-    public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
+    public int getExecuteRetryCount() { return executeRetryCount; }
+    public void setExecuteRetryCount(int executeRetryCount) { this.executeRetryCount = executeRetryCount; }
+
+    public int getCallbackRetryCount() { return callbackRetryCount; }
+    public void setCallbackRetryCount(int callbackRetryCount) { this.callbackRetryCount = callbackRetryCount; }
 
     public boolean isSync() { return sync; }
     public void setSync(boolean sync) { this.sync = sync; }
