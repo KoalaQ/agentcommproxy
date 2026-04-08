@@ -126,7 +126,12 @@ public class OpenClawProxy implements CommandProxy {
         if (line == null || line.isEmpty()) {
             return true;  // 过滤空行
         }
-        String trimmed = line.trim();
+
+        // 移除 ANSI 颜色码，获取纯文本
+        String cleanLine = line.replaceAll("\\x1b\\[[0-9;]*m", "")
+                               .replaceAll("\\[\\d+m", "");
+
+        String trimmed = cleanLine.trim();
 
         // 过滤空内容
         if (trimmed.isEmpty()) {
@@ -148,9 +153,18 @@ public class OpenClawProxy implements CommandProxy {
             return true;
         }
 
-        // 过滤以 [ 开头的日志
-        if (trimmed.startsWith("[plugins]")
-            || trimmed.startsWith("[INFO]")
+        // 过滤以 [plugins] 开头的日志（包含颜色码的情况）
+        if (trimmed.startsWith("[plugins]")) {
+            return true;
+        }
+
+        // 过滤包含 Registered 的插件注册日志
+        if (trimmed.contains("Registered")) {
+            return true;
+        }
+
+        // 过滤标准日志级别开头
+        if (trimmed.startsWith("[INFO]")
             || trimmed.startsWith("[DEBUG]")
             || trimmed.startsWith("[WARN]")
             || trimmed.startsWith("[ERROR]")) {
@@ -158,7 +172,7 @@ public class OpenClawProxy implements CommandProxy {
         }
 
         // 过滤分隔符符号
-        if (trimmed.equals("│") || trimmed.equals("◇") || trimmed.equals("│") || trimmed.equals("◆")) {
+        if (trimmed.equals("│") || trimmed.equals("◇") || trimmed.equals("◆")) {
             return true;
         }
 
