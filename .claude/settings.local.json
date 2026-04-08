@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(java:*)",
+      "Bash(mvn package:*)",
+      "Bash(export JAVA_HOME=\"C:/Program Files/Java/jdk-17\")",
+      "Bash(export:*)",
+      "Bash(sqlite3:*)"
+    ]
+  }
+}
