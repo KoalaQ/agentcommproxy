@@ -80,8 +80,7 @@ public class AgentService {
     public void processRequest(AgentRequest request) {
         log.info("Processing async request: {}", request.getId());
 
-        request.setStatus(MessageStatus.RUNNING);
-        store.updateRequestStatus(request.getId(), MessageStatus.RUNNING, null, null);
+        // 状态已在 DaemonManager 中更新为 RUNNING
 
         CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
 
@@ -161,7 +160,7 @@ public class AgentService {
      */
     public void processRetry(AgentRequest request) {
         log.info("Retrying request: {} (attempt {})", request.getId(), request.getRetryCount() + 1);
-        store.removeFromRetryQueue(request.getId());
+        // 重试队列已在 DaemonManager 中移除
         processRequest(request);
     }
 }

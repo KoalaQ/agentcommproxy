@@ -172,21 +172,28 @@ public class DaemonManager {
             List<AgentRequest> pendingRequests = store.getPendingRequests();
             for (AgentRequest request : pendingRequests) {
                 if (request.getStatus() == MessageStatus.PENDING) {
+                    // 先更新状态为 RUNNING，防止重复扫描
+                    store.updateRequestStatus(request.getId(), MessageStatus.RUNNING, null, null);
+
                     // 提交到线程池异步处理
+                    final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            agentService.processRequest(request);
+                            // 重新从数据库加载最新状态
+                            store.getRequestById(requestId).ifPresent(agentService::processRequest);
                         } catch (Exception e) {
-                            log.error("Error processing request {}: {}", request.getId(), e.getMessage());
+                            log.error("Error processing request {}: {}", requestId, e.getMessage());
                         }
                     });
                 } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
+                    // 先更新状态，防止重复扫描（保持 CALLBACK_PENDING，通过数据库行处理）
                     // 提交到线程池异步处理
+                    final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            agentService.doCallback(request);
+                            store.getRequestById(requestId).ifPresent(agentService::doCallback);
                         } catch (Exception e) {
-                            log.error("Error callback request {}: {}", request.getId(), e.getMessage());
+                            log.error("Error callback request {}: {}", requestId, e.getMessage());
                         }
                     });
                 }
@@ -196,22 +203,30 @@ public class DaemonManager {
             List<AgentRequest> retryRequests = store.getRetryRequests();
             for (AgentRequest request : retryRequests) {
                 if (request.getStatus() == MessageStatus.FAILED) {
+                    // 先更新状态为 RUNNING
+                    store.updateRequestStatus(request.getId(), MessageStatus.RUNNING, null, null);
+                    store.removeFromRetryQueue(request.getId());
+
                     // 提交到线程池异步处理
+                    final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            agentService.processRetry(request);
+                            store.getRequestById(requestId).ifPresent(agentService::processRequest);
                         } catch (Exception e) {
-                            log.error("Error retrying request {}: {}", request.getId(), e.getMessage());
+                            log.error("Error retrying request {}: {}", requestId, e.getMessage());
                         }
                     });
                 } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
+                    // 先从重试队列移除
+                    store.removeFromRetryQueue(request.getId());
+
                     // 提交到线程池异步处理
+                    final String requestId = request.getId();
                     workerPool.submit(() -> {
                         try {
-                            store.removeFromRetryQueue(request.getId());
-                            agentService.doCallback(request);
+                            store.getRequestById(requestId).ifPresent(agentService::doCallback);
                         } catch (Exception e) {
-                            log.error("Error retrying callback {}: {}", request.getId(), e.getMessage());
+                            log.error("Error retrying callback {}: {}", requestId, e.getMessage());
                         }
                     });
                 }
