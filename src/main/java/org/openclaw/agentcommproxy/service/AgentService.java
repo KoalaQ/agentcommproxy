@@ -90,10 +90,12 @@ public class AgentService {
         CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
 
         if (result.isSuccess()) {
-            request.setStatus(MessageStatus.CALLBACK_PENDING);
             request.setResponse(result.getOutput());
-            store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_PENDING, result.getOutput(), null);
-            log.info("Request completed, ready for callback: {}", request.getId());
+            store.updateRequestStatus(request.getId(), MessageStatus.SUCCESS, result.getOutput(), null);
+            log.info("Request completed successfully: {}", request.getId());
+
+            // 立即执行回调
+            doCallback(request);
         } else if (result.isTimeout()) {
             handleFailure(request, "Timeout", true);
         } else {
@@ -159,12 +161,12 @@ public class AgentService {
         CommandResult result = proxy.execute(request.getSender(), callbackMessage, configManager.getDefaultTimeout());
 
         if (result.isSuccess()) {
-            request.setStatus(MessageStatus.CALLBACK_DONE);
             store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_DONE, request.getResponse(), null);
             log.info("Callback completed: {}", request.getId());
         } else {
             log.warn("Callback failed: {} - {}", request.getId(), result.getError());
-            // 回调失败也加入重试队列
+            // 回调失败，标记为 CALLBACK_PENDING 等待重试
+            store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_PENDING, request.getResponse(), null);
             long nextRetryAt = Instant.now().toEpochMilli() + (configManager.getAsyncRetryInterval() * 1000L);
             store.addToRetryQueue(request.getId(), nextRetryAt);
         }

@@ -137,20 +137,28 @@ public class DaemonManager {
         log.debug("Checking pending messages...");
 
         try {
-            // 1. 处理待发送请求
+            // 1. 处理待发送请求 (PENDING)
             List<AgentRequest> pendingRequests = store.getPendingRequests();
             for (AgentRequest request : pendingRequests) {
                 if (request.getStatus() == MessageStatus.PENDING) {
                     agentService.processRequest(request);
                 } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
+                    // 处理遗留的 CALLBACK_PENDING 消息（兼容旧数据）
                     agentService.doCallback(request);
                 }
             }
 
-            // 2. 处理待重试请求
+            // 2. 处理待重试请求（区分执行失败和回调失败）
             List<AgentRequest> retryRequests = store.getRetryRequests();
             for (AgentRequest request : retryRequests) {
-                agentService.processRetry(request);
+                if (request.getStatus() == MessageStatus.FAILED) {
+                    // 执行失败，重新执行
+                    agentService.processRetry(request);
+                } else if (request.getStatus() == MessageStatus.CALLBACK_PENDING) {
+                    // 回调失败，重新回调
+                    store.removeFromRetryQueue(request.getId());
+                    agentService.doCallback(request);
+                }
             }
 
             if (pendingRequests.isEmpty() && retryRequests.isEmpty()) {

@@ -171,7 +171,7 @@ public class SQLiteStore {
         String sql =
             "SELECT r.* FROM requests r " +
             "JOIN retry_queue q ON r.id = q.request_id " +
-            "WHERE q.next_retry_at <= ? AND r.status = 'FAILED'";
+            "WHERE q.next_retry_at <= ? AND (r.status = 'FAILED' OR r.status = 'CALLBACK_PENDING')";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
