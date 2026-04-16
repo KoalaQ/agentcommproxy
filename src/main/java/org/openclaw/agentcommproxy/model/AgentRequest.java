@@ -19,6 +19,8 @@ public class AgentRequest {
     private int timeout;                // 超时时间（秒）
     private long createdAt;             // 创建时间戳
     private long updatedAt;             // 更新时间戳
+    private SenderType senderType;      // 请求方类型（CLI/HTTP_CALLBACK/HTTP_POLL）
+    private String callbackUrl;         // HTTP 回调地址
 
     public AgentRequest() {
         this.status = MessageStatus.PENDING;
@@ -69,4 +71,10 @@ public class AgentRequest {
 
     public long getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(long updatedAt) { this.updatedAt = updatedAt; }
+
+    public SenderType getSenderType() { return senderType; }
+    public void setSenderType(SenderType senderType) { this.senderType = senderType; }
+
+    public String getCallbackUrl() { return callbackUrl; }
+    public void setCallbackUrl(String callbackUrl) { this.callbackUrl = callbackUrl; }
 }

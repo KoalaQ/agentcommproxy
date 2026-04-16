@@ -1,8 +1,11 @@
 package org.openclaw.agentcommproxy.service;
 
+import org.openclaw.agentcommproxy.callback.CallbackHandler;
+import org.openclaw.agentcommproxy.callback.CallbackHandlerFactory;
 import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
+import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.proxy.CommandProxy;
 import org.openclaw.agentcommproxy.proxy.CommandProxyFactory;
 import org.openclaw.agentcommproxy.proxy.CommandResult;
@@ -25,11 +28,13 @@ public class AgentService {
     private final ConfigManager configManager;
     private final SQLiteStore store;
     private final CommandProxy proxy;
+    private final CallbackHandlerFactory callbackHandlerFactory;
 
     public AgentService(ConfigManager configManager, SQLiteStore store) {
         this.configManager = configManager;
         this.store = store;
         this.proxy = CommandProxyFactory.getDefaultProxy();
+        this.callbackHandlerFactory = new CallbackHandlerFactory(configManager);
     }
 
     /**
@@ -95,42 +100,44 @@ public class AgentService {
     }
 
     /**
-     * 处理回调（由 DaemonManager 调用）
+     * 处理回调（策略模式）
+     * 由 DaemonManager 调用，根据 SenderType 选择不同的回调处理器
      */
     public void processCallback(AgentRequest request) {
-        log.info("Callback request: {} to sender: {}", request.getId(), request.getSender());
+        log.info("Callback request: {} to sender: {} via {}", request.getId(), request.getSender(), request.getSenderType());
 
-        // 构建回调消息
-        StringBuilder callbackMessage = new StringBuilder();
-        callbackMessage.append("Request ID: ").append(request.getId()).append("\n");
-        callbackMessage.append("Sender: ").append(request.getSender()).append("\n");
-        callbackMessage.append("Target Agent: ").append(request.getTargetAgent()).append("\n");
-        callbackMessage.append("Message: ").append(request.getMessage()).append("\n");
-        if (request.getResponse() != null && !request.getResponse().isEmpty()) {
-            callbackMessage.append("Response: ").append(request.getResponse());
-        }
+        // 获取对应的回调处理器
+        CallbackHandler handler = callbackHandlerFactory.getHandler(request);
+        boolean success = handler.doCallback(request);
 
-        CommandResult result = proxy.execute(request.getSender(), callbackMessage.toString(), configManager.getDefaultTimeout());
-
-        if (result.isSuccess()) {
+        if (success) {
             store.updateRequestStatus(request.getId(), MessageStatus.DONE, request.getResponse(), null);
-            log.info("Callback success: {}", request.getId());
+            log.info("Callback success: {} via {}", request.getId(), handler.getHandlerType());
         } else {
-            log.warn("Callback failed: {} - {}", request.getId(), result.getError());
-            store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_FAILED, request.getResponse(), null);
-            store.incrementCallbackRetryCount(request.getId());
+            handleCallbackFailure(request);
+        }
+    }
 
-            int maxRetry = configManager.getAsyncRetryCount();
-            int retryCount = request.getCallbackRetryCount() + 1;
+    /**
+     * 处理回调失败
+     */
+    private void handleCallbackFailure(AgentRequest request) {
+        log.warn("Callback failed: {} - {}", request.getId(), request.getSenderType());
 
-            if (retryCount < maxRetry) {
-                long nextRetryAt = Instant.now().toEpochMilli() + (configManager.getAsyncRetryInterval() * 1000L);
-                store.addToRetryQueue(request.getId(), RETRY_TYPE_CALLBACK, nextRetryAt);
-                log.info("Callback added to retry queue: {} (retry {})", request.getId(), retryCount);
-            } else {
-                store.updateRequestStatus(request.getId(), MessageStatus.ERROR, request.getResponse(), "Callback failed after max retries");
-                log.warn("Callback failed after max retries: {}", request.getId());
-            }
+        store.updateRequestStatus(request.getId(), MessageStatus.CALLBACK_FAILED, request.getResponse(), null);
+        store.incrementCallbackRetryCount(request.getId());
+
+        int maxRetry = configManager.getAsyncRetryCount();
+        int retryCount = request.getCallbackRetryCount() + 1;
+        request.setCallbackRetryCount(retryCount);
+
+        if (retryCount <= maxRetry) {
+            long nextRetryAt = Instant.now().toEpochMilli() + (configManager.getAsyncRetryInterval() * 1000L);
+            store.addToRetryQueue(request.getId(), RETRY_TYPE_CALLBACK, nextRetryAt);
+            log.info("Callback added to retry queue: {} (retry {})", request.getId(), retryCount);
+        } else {
+            store.updateRequestStatus(request.getId(), MessageStatus.ERROR, request.getResponse(), "Callback failed after max retries");
+            log.warn("Callback failed after max retries: {}", request.getId());
         }
     }
 
@@ -146,8 +153,9 @@ public class AgentService {
         store.incrementExecuteRetryCount(request.getId());
 
         int retryCount = request.getExecuteRetryCount() + 1;
+        request.setExecuteRetryCount(retryCount);  // 同步更新 request 对象
 
-        if (retryCount < maxRetry) {
+        if (retryCount <= maxRetry) {
             long nextRetryAt = Instant.now().toEpochMilli() + (configManager.getAsyncRetryInterval() * 1000L);
             store.addToRetryQueue(request.getId(), RETRY_TYPE_EXECUTE, nextRetryAt);
             log.info("Execute failed, added to retry queue: {} (retry {})", request.getId(), retryCount);

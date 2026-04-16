@@ -3,6 +3,7 @@ package org.openclaw.agentcommproxy.command;
 import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
+import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.service.AgentService;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
 import picocli.CommandLine.Command;
@@ -52,6 +53,7 @@ public class AgentCommand implements Callable<Integer> {
         request.setMessage(message);
         request.setSync(sync);
         request.setTimeout(timeout);
+        request.setSenderType(SenderType.CLI);  // CLI 命令固定使用 CLI 回调
 
         // 指定请求ID（用于重试或修改）
         if (requestId != null) {

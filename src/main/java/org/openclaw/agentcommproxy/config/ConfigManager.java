@@ -25,6 +25,8 @@ public class ConfigManager {
     private static final int DEFAULT_TIMEOUT = 300;
     private static final int DEFAULT_DAEMON_INTERVAL = 5;
     private static final int DEFAULT_DAEMON_POOL_SIZE = 4;
+    private static final int DEFAULT_HTTP_PORT = 8080;
+    private static final boolean DEFAULT_HTTP_ENABLED = true;
 
     private Properties properties;
     private Path configPath;
@@ -63,7 +65,15 @@ public class ConfigManager {
         properties.setProperty("default.timeout", String.valueOf(DEFAULT_TIMEOUT));
         properties.setProperty("daemon.interval", String.valueOf(DEFAULT_DAEMON_INTERVAL));
         properties.setProperty("daemon.pool.size", String.valueOf(DEFAULT_DAEMON_POOL_SIZE));
+        properties.setProperty("daemon.enabled", "true");
         properties.setProperty("db.path", Paths.get(System.getProperty("user.home"), CONFIG_DIR, DB_FILE).toString());
+        properties.setProperty("http.enabled", String.valueOf(DEFAULT_HTTP_ENABLED));
+        properties.setProperty("http.port", String.valueOf(DEFAULT_HTTP_PORT));
+        // API Key 首次启动时自动生成
+        String existingApiKey = properties.getProperty("http.api.key");
+        if (existingApiKey == null || existingApiKey.isEmpty()) {
+            properties.setProperty("http.api.key", java.util.UUID.randomUUID().toString());
+        }
     }
 
     private void saveConfig() {
@@ -98,8 +108,40 @@ public class ConfigManager {
         return getInt("daemon.pool.size", DEFAULT_DAEMON_POOL_SIZE);
     }
 
+    public boolean isDaemonEnabled() {
+        return getBoolean("daemon.enabled", true);
+    }
+
     public String getDbPath() {
         return properties.getProperty("db.path");
+    }
+
+    // HTTP 配置
+    public boolean isHttpEnabled() {
+        return getBoolean("http.enabled", DEFAULT_HTTP_ENABLED);
+    }
+
+    public int getHttpPort() {
+        return getInt("http.port", DEFAULT_HTTP_PORT);
+    }
+
+    public String getApiKey() {
+        return properties.getProperty("http.api.key");
+    }
+
+    public void setHttpPort(int port) {
+        properties.setProperty("http.port", String.valueOf(port));
+        saveConfig();
+    }
+
+    public void setHttpEnabled(boolean enabled) {
+        properties.setProperty("http.enabled", String.valueOf(enabled));
+        saveConfig();
+    }
+
+    public void generateNewApiKey() {
+        properties.setProperty("http.api.key", java.util.UUID.randomUUID().toString());
+        saveConfig();
     }
 
     private int getInt(String key, int defaultValue) {
@@ -110,6 +152,14 @@ public class ConfigManager {
             } catch (NumberFormatException e) {
                 log.warn("Invalid config value for {}: {}", key, value);
             }
+        }
+        return defaultValue;
+    }
+
+    private boolean getBoolean(String key, boolean defaultValue) {
+        String value = properties.getProperty(key);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
         }
         return defaultValue;
     }
