@@ -32,6 +32,7 @@ public class DaemonManager {
     private final AgentService agentService;
 
     private ScheduledExecutorService scheduler;
+    private ScheduledExecutorService cleanupScheduler;
     private ExecutorService workerPool;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private int interval;
@@ -80,7 +81,19 @@ public class DaemonManager {
         running.set(true);
         scheduler.scheduleAtFixedRate(this::processPendingMessages, 0, interval, TimeUnit.SECONDS);
 
-        log.info("Daemon started, interval: {}s, pool size: {}, foreground: {}", interval, poolSize, foreground);
+        // 启动定期清理任务（每小时执行一次）
+        if (configManager.isCleanupEnabled()) {
+            cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "agentcommproxy-cleanup");
+                t.setDaemon(true);
+                return t;
+            });
+            cleanupScheduler.scheduleAtFixedRate(this::cleanupExpiredMessages, 1, 60, TimeUnit.MINUTES);
+            log.info("Cleanup scheduler started, cleanup days: {}, cleanup status: {}",
+                configManager.getCleanupDays(), configManager.getCleanupStatus());
+        }
+
+        log.info("Daemon started, interval: {}s, pool size: {}, foreground: {}, maxRetry: {}", interval, poolSize, foreground, configManager.getAsyncRetryCount());
 
         if (foreground) {
             try {
@@ -114,6 +127,15 @@ public class DaemonManager {
                 scheduler.awaitTermination(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 scheduler.shutdownNow();
+            }
+        }
+
+        if (cleanupScheduler != null) {
+            cleanupScheduler.shutdown();
+            try {
+                cleanupScheduler.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                cleanupScheduler.shutdownNow();
             }
         }
 
@@ -193,8 +215,9 @@ public class DaemonManager {
                     // 执行重试
                     int retryCount = request.getExecuteRetryCount();
                     store.removeFromRetryQueue(request.getId());
+                    log.debug("Execute retry check: {} - retryCount={}, maxRetry={}", request.getId(), retryCount, maxRetry);
 
-                    if (retryCount < maxRetry) {
+                    if (retryCount <= maxRetry) {
                         store.updateRequestStatus(request.getId(), MessageStatus.EXECUTING, null, null);
 
                         final String requestId = request.getId();
@@ -213,8 +236,9 @@ public class DaemonManager {
                     // 回调重试
                     int retryCount = request.getCallbackRetryCount();
                     store.removeFromRetryQueue(request.getId());
+                    log.debug("Callback retry check: {} - retryCount={}, maxRetry={}", request.getId(), retryCount, maxRetry);
 
-                    if (retryCount < maxRetry) {
+                    if (retryCount <= maxRetry) {
                         store.updateRequestStatus(request.getId(), MessageStatus.CALLBACKING, request.getResponse(), null);
 
                         final String requestId = request.getId();
@@ -238,6 +262,27 @@ public class DaemonManager {
 
         } catch (Exception e) {
             log.error("Error processing pending messages: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 清理过期消息
+     */
+    private void cleanupExpiredMessages() {
+        if (!running.get()) {
+            return;
+        }
+
+        try {
+            int days = configManager.getCleanupDays();
+            String statuses = configManager.getCleanupStatus();
+
+            int count = store.clearExpired(days, statuses);
+            if (count > 0) {
+                log.info("Cleanup completed: {} expired messages deleted (days={}, statuses={})", count, days, statuses);
+            }
+        } catch (Exception e) {
+            log.error("Error during cleanup: {}", e.getMessage());
         }
     }
 }

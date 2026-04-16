@@ -27,6 +27,9 @@ public class ConfigManager {
     private static final int DEFAULT_DAEMON_POOL_SIZE = 4;
     private static final int DEFAULT_HTTP_PORT = 8080;
     private static final boolean DEFAULT_HTTP_ENABLED = true;
+    private static final boolean DEFAULT_CLEANUP_ENABLED = true;
+    private static final int DEFAULT_CLEANUP_DAYS = 7;
+    private static final String DEFAULT_CLEANUP_STATUS = "DONE";
 
     private Properties properties;
     private Path configPath;
@@ -74,6 +77,10 @@ public class ConfigManager {
         if (existingApiKey == null || existingApiKey.isEmpty()) {
             properties.setProperty("http.api.key", java.util.UUID.randomUUID().toString());
         }
+        // 定期清理配置
+        properties.setProperty("cleanup.enabled", String.valueOf(DEFAULT_CLEANUP_ENABLED));
+        properties.setProperty("cleanup.days", String.valueOf(DEFAULT_CLEANUP_DAYS));
+        properties.setProperty("cleanup.status", DEFAULT_CLEANUP_STATUS);
     }
 
     private void saveConfig() {
@@ -141,6 +148,34 @@ public class ConfigManager {
 
     public void generateNewApiKey() {
         properties.setProperty("http.api.key", java.util.UUID.randomUUID().toString());
+        saveConfig();
+    }
+
+    // 定期清理配置
+    public boolean isCleanupEnabled() {
+        return getBoolean("cleanup.enabled", DEFAULT_CLEANUP_ENABLED);
+    }
+
+    public int getCleanupDays() {
+        return getInt("cleanup.days", DEFAULT_CLEANUP_DAYS);
+    }
+
+    public String getCleanupStatus() {
+        return properties.getProperty("cleanup.status", DEFAULT_CLEANUP_STATUS);
+    }
+
+    public void setCleanupEnabled(boolean enabled) {
+        properties.setProperty("cleanup.enabled", String.valueOf(enabled));
+        saveConfig();
+    }
+
+    public void setCleanupDays(int days) {
+        properties.setProperty("cleanup.days", String.valueOf(days));
+        saveConfig();
+    }
+
+    public void setCleanupStatus(String status) {
+        properties.setProperty("cleanup.status", status);
         saveConfig();
     }
 

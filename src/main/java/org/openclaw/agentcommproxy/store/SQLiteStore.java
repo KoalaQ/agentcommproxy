@@ -430,6 +430,62 @@ public class SQLiteStore {
         }
     }
 
+    /**
+     * 清理过期消息
+     * 删除指定状态且超过指定天数的历史消息
+     *
+     * @param days    保留天数
+     * @param statuses 要清理的状态列表（逗号分隔）
+     * @return 清理的消息数量
+     */
+    public int clearExpired(int days, String statuses) {
+        if (statuses == null || statuses.isEmpty()) {
+            return 0;
+        }
+
+        long cutoffTime = Instant.now().toEpochMilli() - (days * 24L * 60 * 60 * 1000);
+
+        try (Connection conn = getConnection()) {
+            // 解析状态列表
+            String[] statusArray = statuses.split(",");
+            StringBuilder statusCondition = new StringBuilder();
+            for (int i = 0; i < statusArray.length; i++) {
+                if (i > 0) {
+                    statusCondition.append(",");
+                }
+                statusCondition.append("?");
+            }
+
+            // 先删除重试队列中的记录
+            String deleteRetrySql = "DELETE FROM retry_queue WHERE request_id IN " +
+                "(SELECT id FROM requests WHERE status IN (" + statusCondition + ") AND created_at < ?)";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRetrySql)) {
+                for (int i = 0; i < statusArray.length; i++) {
+                    ps.setString(i + 1, statusArray[i].trim().toUpperCase());
+                }
+                ps.setLong(statusArray.length + 1, cutoffTime);
+                ps.executeUpdate();
+            }
+
+            // 再删除请求记录
+            String deleteRequestsSql = "DELETE FROM requests WHERE status IN (" + statusCondition + ") AND created_at < ?";
+            try (PreparedStatement ps = conn.prepareStatement(deleteRequestsSql)) {
+                for (int i = 0; i < statusArray.length; i++) {
+                    ps.setString(i + 1, statusArray[i].trim().toUpperCase());
+                }
+                ps.setLong(statusArray.length + 1, cutoffTime);
+                int count = ps.executeUpdate();
+                if (count > 0) {
+                    log.info("Cleanup expired messages: {} records deleted (days={}, statuses={})", count, days, statuses);
+                }
+                return count;
+            }
+        } catch (SQLException e) {
+            log.error("Failed to cleanup expired messages: {}", e.getMessage());
+            return -1;
+        }
+    }
+
     private AgentRequest mapRequest(ResultSet rs) throws SQLException {
         AgentRequest request = new AgentRequest();
         request.setId(rs.getString("id"));
