@@ -5,6 +5,7 @@ import org.openclaw.agentcommproxy.callback.CallbackHandlerFactory;
 import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
+import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.proxy.CommandProxy;
 import org.openclaw.agentcommproxy.proxy.CommandProxyFactory;
@@ -27,13 +28,11 @@ public class AgentService {
 
     private final ConfigManager configManager;
     private final SQLiteStore store;
-    private final CommandProxy proxy;
     private final CallbackHandlerFactory callbackHandlerFactory;
 
     public AgentService(ConfigManager configManager, SQLiteStore store) {
         this.configManager = configManager;
         this.store = store;
-        this.proxy = CommandProxyFactory.getDefaultProxy();
         this.callbackHandlerFactory = new CallbackHandlerFactory(configManager);
     }
 
@@ -45,9 +44,16 @@ public class AgentService {
         request.setStatus(MessageStatus.EXECUTING);
         request.setTimeout(request.getTimeout() > 0 ? request.getTimeout() : configManager.getDefaultTimeout());
 
+        // 设置默认 proxyType
+        if (request.getProxyType() == null) {
+            request.setProxyType(configManager.getDefaultProxyType());
+        }
+
         store.saveRequest(request);
         log.info("Sync request saved: {}", request.getId());
 
+        // 根据 proxyType 选择 proxy
+        CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
         CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
 
         if (result.isSuccess()) {
@@ -71,6 +77,11 @@ public class AgentService {
         request.setStatus(MessageStatus.PENDING);
         request.setTimeout(request.getTimeout() > 0 ? request.getTimeout() : configManager.getDefaultTimeout());
 
+        // 设置默认 proxyType
+        if (request.getProxyType() == null) {
+            request.setProxyType(configManager.getDefaultProxyType());
+        }
+
         store.saveRequest(request);
         log.info("Async request saved: {} - will be processed by daemon", request.getId());
 
@@ -81,8 +92,10 @@ public class AgentService {
      * 处理执行请求（由 DaemonManager 调用）
      */
     public void processExecute(AgentRequest request) {
-        log.info("Executing request: {}", request.getId());
+        log.info("Executing request: {} via proxy: {}", request.getId(), request.getProxyType());
 
+        // 根据 proxyType 选择 proxy
+        CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
         CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
 
         if (result.isSuccess()) {

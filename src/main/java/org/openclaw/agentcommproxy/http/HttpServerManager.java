@@ -12,6 +12,7 @@ import org.openclaw.agentcommproxy.http.dto.SendResponse;
 import org.openclaw.agentcommproxy.http.dto.StatusResponse;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
+import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.service.AgentService;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
@@ -179,6 +180,11 @@ public class HttpServerManager {
                 agentRequest.setCallbackUrl(request.getCallbackUrl());
             } else {
                 agentRequest.setSenderType(SenderType.HTTP_POLL);
+            }
+
+            // 设置 proxyType
+            if (request.getProxy() != null && !request.getProxy().isEmpty()) {
+                agentRequest.setProxyType(ProxyType.fromCode(request.getProxy()));
             }
 
             SendResponse response;

@@ -25,6 +25,9 @@ public class SendRequest {
     @JsonProperty("callbackUrl")
     private String callbackUrl;
 
+    @JsonProperty("proxy")
+    private String proxy;
+
     public String getAgent() {
         return agent;
     }
@@ -71,5 +74,13 @@ public class SendRequest {
 
     public void setCallbackUrl(String callbackUrl) {
         this.callbackUrl = callbackUrl;
+    }
+
+    public String getProxy() {
+        return proxy;
+    }
+
+    public void setProxy(String proxy) {
+        this.proxy = proxy;
     }
 }

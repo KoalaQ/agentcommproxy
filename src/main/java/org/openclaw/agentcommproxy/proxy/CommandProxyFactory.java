@@ -1,5 +1,7 @@
 package org.openclaw.agentcommproxy.proxy;
 
+import org.openclaw.agentcommproxy.model.ProxyType;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,7 +25,7 @@ public class CommandProxyFactory {
     }
 
     /**
-     * 获取代理
+     * 根据名称获取代理
      */
     public static CommandProxy getProxy(String name) {
         CommandProxy proxy = proxies.get(name);
@@ -34,9 +36,16 @@ public class CommandProxyFactory {
     }
 
     /**
+     * 根据 ProxyType 获取代理
+     */
+    public static CommandProxy getProxy(ProxyType type) {
+        return getProxy(type.getCode());
+    }
+
+    /**
      * 获取默认代理（openclaw）
      */
     public static CommandProxy getDefaultProxy() {
-        return getProxy("openclaw");
+        return getProxy(ProxyType.OPENCLAW);
     }
 }

@@ -21,6 +21,7 @@ public class AgentRequest {
     private long updatedAt;             // 更新时间戳
     private SenderType senderType;      // 请求方类型（CLI/HTTP_CALLBACK/HTTP_POLL）
     private String callbackUrl;         // HTTP 回调地址
+    private ProxyType proxyType;        // Proxy 类型（OPENCLAW/HTTP/WEBSOCKET/CUSTOM）
 
     public AgentRequest() {
         this.status = MessageStatus.PENDING;
@@ -77,4 +78,7 @@ public class AgentRequest {
 
     public String getCallbackUrl() { return callbackUrl; }
     public void setCallbackUrl(String callbackUrl) { this.callbackUrl = callbackUrl; }
+
+    public ProxyType getProxyType() { return proxyType; }
+    public void setProxyType(ProxyType proxyType) { this.proxyType = proxyType; }
 }

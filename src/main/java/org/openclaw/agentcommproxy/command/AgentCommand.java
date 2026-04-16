@@ -3,6 +3,7 @@ package org.openclaw.agentcommproxy.command;
 import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
+import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.service.AgentService;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
@@ -36,6 +37,9 @@ public class AgentCommand implements Callable<Integer> {
     @Option(names = {"--request-id"}, description = "Request ID (optional, for retry)")
     private String requestId;
 
+    @Option(names = {"--proxy"}, description = "Proxy type (openclaw/http/websocket/custom)")
+    private String proxyType;
+
     @Override
     public Integer call() {
         ConfigManager configManager = new ConfigManager();
@@ -54,6 +58,11 @@ public class AgentCommand implements Callable<Integer> {
         request.setSync(sync);
         request.setTimeout(timeout);
         request.setSenderType(SenderType.CLI);  // CLI 命令固定使用 CLI 回调
+
+        // 设置 proxyType
+        if (proxyType != null && !proxyType.isEmpty()) {
+            request.setProxyType(ProxyType.fromCode(proxyType));
+        }
 
         // 指定请求ID（用于重试或修改）
         if (requestId != null) {

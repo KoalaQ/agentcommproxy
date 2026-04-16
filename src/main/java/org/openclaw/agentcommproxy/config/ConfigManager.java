@@ -1,5 +1,6 @@
 package org.openclaw.agentcommproxy.config;
 
+import org.openclaw.agentcommproxy.model.ProxyType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,7 @@ public class ConfigManager {
     private static final boolean DEFAULT_CLEANUP_ENABLED = true;
     private static final int DEFAULT_CLEANUP_DAYS = 7;
     private static final String DEFAULT_CLEANUP_STATUS = "DONE";
+    private static final String DEFAULT_PROXY_TYPE = "openclaw";
 
     private Properties properties;
     private Path configPath;
@@ -81,6 +83,8 @@ public class ConfigManager {
         properties.setProperty("cleanup.enabled", String.valueOf(DEFAULT_CLEANUP_ENABLED));
         properties.setProperty("cleanup.days", String.valueOf(DEFAULT_CLEANUP_DAYS));
         properties.setProperty("cleanup.status", DEFAULT_CLEANUP_STATUS);
+        // Proxy 配置
+        properties.setProperty("proxy.default", DEFAULT_PROXY_TYPE);
     }
 
     private void saveConfig() {
@@ -176,6 +180,17 @@ public class ConfigManager {
 
     public void setCleanupStatus(String status) {
         properties.setProperty("cleanup.status", status);
+        saveConfig();
+    }
+
+    // Proxy 配置
+    public ProxyType getDefaultProxyType() {
+        String proxyCode = properties.getProperty("proxy.default", DEFAULT_PROXY_TYPE);
+        return ProxyType.fromCode(proxyCode);
+    }
+
+    public void setDefaultProxyType(ProxyType proxyType) {
+        properties.setProperty("proxy.default", proxyType.getCode());
         saveConfig();
     }
 

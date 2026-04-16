@@ -47,6 +47,15 @@ API Key 获取方式：
 | sync | 否 | Boolean | 是否同步模式 | false |
 | timeout | 否 | Integer | 超时秒数 | 300 |
 | callbackUrl | 否 | String | 回调地址（异步模式） | - |
+| proxy | 否 | String | Proxy 类型 | openclaw |
+
+#### Proxy 类型
+
+| 类型 | 说明 |
+|-----|------|
+| openclaw | OpenClaw CLI 命令执行（默认） |
+| http | HTTP API 调用（未来支持） |
+| websocket | WebSocket 通信（未来支持） |
 
 #### 请求示例
 

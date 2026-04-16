@@ -18,7 +18,7 @@ agentproxy <command> [options]
 ### 基本语法
 
 ```bash
-agentproxy agent --agent <target> --sender <sender> --message <message> [--sync] [--timeout N]
+agentproxy agent --agent <target> --sender <sender> --message <message> [--sync] [--timeout N] [--proxy <type>]
 ```
 
 ### 必需参数
@@ -36,11 +36,12 @@ agentproxy agent --agent <target> --sender <sender> --message <message> [--sync]
 | `--sync` | 同步模式，等待响应 | 异步模式 |
 | `--timeout <seconds>` | 超时时间（秒） | 300 |
 | `--request-id <id>` | 指定请求 ID（用于重试） | 自动生成 UUID |
+| `--proxy <type>` | Proxy 类型（openclaw/http/websocket） | openclaw |
 
 ### 示例
 
 ```bash
-# 异步发送消息
+# 异步发送消息（默认 OpenClaw）
 agentproxy agent --agent AgentB --sender AgentA --message "hello"
 
 # 同步发送消息（等待响应）
@@ -51,6 +52,9 @@ agentproxy agent --agent AgentB --sender AgentA --message "long task" --sync --t
 
 # 指定请求 ID
 agentproxy agent --agent AgentB --sender AgentA --message "retry task" --request-id "abc-123"
+
+# 指定 Proxy 类型
+agentproxy agent --agent AgentB --sender AgentA --message "hello" --proxy openclaw
 ```
 
 ### 输出说明
@@ -438,6 +442,10 @@ Cleared 50 messages with status: DONE
 | http.enabled | 是否启用 HTTP 服务 | true |
 | http.port | HTTP 服务端口 | 8080 |
 | http.api.key | API Key | 自动生成 UUID |
+| proxy.default | 默认 Proxy 类型 | openclaw |
+| cleanup.enabled | 是否启用定期清理 | true |
+| cleanup.days | 清理保留天数 | 7 |
+| cleanup.status | 清理状态 | DONE |
 
 ### 配置示例
 
@@ -460,6 +468,14 @@ daemon.scan.interval=5
 http.enabled=true
 http.port=8080
 http.api.key=abc-123-def-456
+
+# Proxy 配置
+proxy.default=openclaw
+
+# 定期清理配置
+cleanup.enabled=true
+cleanup.days=7
+cleanup.status=DONE
 ```
 
 ## Claude Code Skills 集成
