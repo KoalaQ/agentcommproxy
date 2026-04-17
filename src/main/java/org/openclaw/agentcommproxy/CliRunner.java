@@ -47,15 +47,25 @@ public class CliRunner implements Runnable {
     @CommandLine.Option(names = {"--no-daemon"}, description = "Disable daemon auto-start")
     private boolean noDaemon;
 
+    // getter for subcommands to access global option
+    public Integer getHttpPort() {
+        return httpPort;
+    }
+
     public static void main(String[] args) {
         // 初始化核心服务
         ConfigManager configManager = new ConfigManager();
         SQLiteStore store = new SQLiteStore(configManager);
         AgentService agentService = new AgentService(configManager, store);
 
-        // 启动守护进程（除非明确禁用或正在执行 daemon 命令）
-        boolean isDaemonCommand = args.length > 0 && args[0].equals("daemon");
-        if (!isDaemonCommand && !hasNoDaemonFlag(args) && configManager.isDaemonEnabled()) {
+        // 启动守护进程（除非明确禁用或正在执行 daemon/http/clear 命令）
+        // daemon 命令全部跳过自动启动，由 daemon 子命令自己控制
+        boolean isDaemonCommand = containsCommand(args, "daemon");
+        boolean isHttpCommand = containsCommand(args, "http");
+        boolean isClearCommand = containsCommand(args, "clear");
+        boolean skipAutoStart = isDaemonCommand || isHttpCommand || isClearCommand;
+
+        if (!skipAutoStart && !hasNoDaemonFlag(args) && configManager.isDaemonEnabled()) {
             DaemonManager daemon = DaemonManager.getInstance();
             if (!daemon.isRunning()) {
                 daemon.start(null, false);
@@ -63,9 +73,8 @@ public class CliRunner implements Runnable {
             }
         }
 
-        // 启动 HTTP 服务（除非明确禁用或正在执行 http 命令）
-        boolean isHttpCommand = args.length > 0 && args[0].equals("http");
-        if (!isHttpCommand && !hasNoHttpFlag(args) && configManager.isHttpEnabled()) {
+        // 启动 HTTP 服务（除非明确禁用或正在执行 daemon/http/clear 命令）
+        if (!skipAutoStart && !hasNoHttpFlag(args) && configManager.isHttpEnabled()) {
             HttpServerManager http = HttpServerManager.getInstance();
             if (!http.isRunning()) {
                 int port = getHttpPortOverride(args, configManager.getHttpPort());
@@ -107,6 +116,71 @@ public class CliRunner implements Runnable {
             }
         }
         return defaultPort;
+    }
+
+    /**
+     * 检查参数中是否包含指定命令
+     * 跳过全局选项及其参数值
+     */
+    private static boolean containsCommand(String[] args, String command) {
+        // 需要参数值的选项
+        java.util.Set<String> optionsWithArg = java.util.Set.of("--http-port");
+        boolean skipNext = false;
+
+        for (String arg : args) {
+            // 如果上一个参数是需要值的选项，跳过当前参数（它是选项值）
+            if (skipNext) {
+                skipNext = false;
+                continue;
+            }
+            // 跳过全局选项
+            if (arg.startsWith("--")) {
+                // 如果这个选项需要参数值，标记下一个要跳过
+                if (optionsWithArg.contains(arg)) {
+                    skipNext = true;
+                }
+                continue;
+            }
+            // 第一个非选项参数就是命令
+            return arg.equals(command);
+        }
+        return false;
+    }
+
+    /**
+     * 检查参数中是否包含指定子命令
+     * 子命令是命令后的第一个参数
+     */
+    private static boolean containsSubCommand(String[] args, String... subCommands) {
+        java.util.Set<String> optionsWithArg = java.util.Set.of("--http-port");
+        boolean skipNext = false;
+        boolean foundCommand = false;
+
+        for (String arg : args) {
+            if (skipNext) {
+                skipNext = false;
+                continue;
+            }
+            if (arg.startsWith("--")) {
+                if (optionsWithArg.contains(arg)) {
+                    skipNext = true;
+                }
+                continue;
+            }
+            if (!foundCommand) {
+                // 第一个非选项参数是主命令
+                foundCommand = true;
+                continue;
+            }
+            // 第二个非选项参数是子命令
+            for (String sub : subCommands) {
+                if (arg.equals(sub)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return false;
     }
 
     @Override

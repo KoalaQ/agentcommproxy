@@ -1,6 +1,12 @@
 package org.openclaw.agentcommproxy.command;
 
+import org.openclaw.agentcommproxy.CliRunner;
+import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.daemon.DaemonManager;
+import org.openclaw.agentcommproxy.http.HttpServerManager;
+import org.openclaw.agentcommproxy.service.AgentService;
+import org.openclaw.agentcommproxy.store.SQLiteStore;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -17,6 +23,9 @@ import java.util.concurrent.Callable;
     }
 )
 public class DaemonCommand implements Callable<Integer> {
+
+    @CommandLine.ParentCommand
+    CliRunner parent;
 
     @Override
     public Integer call() {
@@ -39,19 +48,46 @@ public class DaemonCommand implements Callable<Integer> {
     @Command(name = "start", description = "Start daemon process")
     public static class Start implements Callable<Integer> {
 
+        @CommandLine.ParentCommand
+        DaemonCommand parent;
+
         @Parameters(index = "0", description = "Interval in seconds (default from config)", arity = "0..1")
         private Integer interval;
 
         @Option(names = {"-f", "--foreground"}, description = "Run in foreground mode (blocking)")
         private boolean foreground;
 
+        @Option(names = {"--http-port"}, description = "HTTP service port (override config)")
+        private Integer httpPort;
+
         @Override
         public Integer call() {
+            ConfigManager configManager = new ConfigManager();
+            SQLiteStore store = new SQLiteStore(configManager);
+            AgentService agentService = new AgentService(configManager, store);
             DaemonManager daemonManager = DaemonManager.getInstance();
 
             if (daemonManager.isRunning()) {
                 System.out.println("Daemon is already running");
                 return 0;
+            }
+
+            // 启动 HTTP 服务
+            HttpServerManager httpManager = HttpServerManager.getInstance();
+            if (!httpManager.isRunning() && configManager.isHttpEnabled()) {
+                // 优先级：子命令选项 > 全局选项 > 配置文件
+                int port;
+                if (httpPort != null) {
+                    port = httpPort;
+                } else if (parent.parent != null && parent.parent.getHttpPort() != null) {
+                    port = parent.parent.getHttpPort();
+                } else {
+                    port = configManager.getHttpPort();
+                }
+                httpManager.start(port, configManager.getApiKey(), agentService, store, configManager);
+                System.out.println("HTTP service started on port " + port);
+                System.out.println("API Key: " + configManager.getApiKey());
+                System.out.println("");
             }
 
             if (foreground) {

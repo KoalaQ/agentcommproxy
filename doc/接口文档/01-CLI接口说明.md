@@ -10,6 +10,9 @@ agentproxy <command> [options]
 
 - `-h, --help`: 显示帮助信息
 - `-V, --version`: 显示版本信息
+- `--http-port <port>`: HTTP 服务端口（覆盖配置）
+- `--no-http`: 禁用 HTTP 服务自动启动
+- `--no-daemon`: 禁用守护进程自动启动
 
 ## agent 命令
 
@@ -191,13 +194,14 @@ agentproxy daemon [start|stop|status] [options]
 启动守护进程。
 
 ```bash
-agentproxy daemon start [interval] [--foreground]
+agentproxy daemon start [interval] [--foreground] [--http-port PORT]
 ```
 
-| 参数 | 说明 |
-|-----|------|
+| 参数 | 说明 | 默认值 |
+|-----|------|-------|
 | `interval` | 扫描间隔（秒），可选 | 配置文件默认值 |
 | `-f, --foreground` | 前台运行模式 | 后台模式 |
+| `--http-port` | HTTP 服务端口 | 配置文件默认值 |
 
 #### daemon stop
 
@@ -224,11 +228,20 @@ agentproxy daemon
 # 前台运行守护进程（阻塞模式）
 agentproxy daemon start --foreground
 
+# 指定 HTTP 端口启动
+agentproxy daemon start --foreground --http-port 9091
+
+# 或使用全局选项
+agentproxy --http-port 9091 daemon start --foreground
+
 # 指定扫描间隔
 agentproxy daemon start 10 --foreground
 
 # 后台运行（使用 nohup）
 nohup agentproxy daemon start --foreground > ~/.agentcommproxy/logs/daemon.log 2>&1 &
+
+# 后台运行并指定端口
+nohup agentproxy --http-port 9091 daemon start --foreground > ~/.agentcommproxy/logs/daemon.log 2>&1 &
 
 # 查看守护进程状态
 agentproxy daemon status
