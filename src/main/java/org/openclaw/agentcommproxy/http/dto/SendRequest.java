@@ -28,6 +28,15 @@ public class SendRequest {
     @JsonProperty("proxy")
     private String proxy;
 
+    @JsonProperty("taskId")
+    private String taskId;
+
+    @JsonProperty("sessionMode")
+    private String sessionMode;
+
+    @JsonProperty("clearSession")
+    private boolean clearSession = false;
+
     public String getAgent() {
         return agent;
     }
@@ -82,5 +91,29 @@ public class SendRequest {
 
     public void setProxy(String proxy) {
         this.proxy = proxy;
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
+        this.taskId = taskId;
+    }
+
+    public String getSessionMode() {
+        return sessionMode;
+    }
+
+    public void setSessionMode(String sessionMode) {
+        this.sessionMode = sessionMode;
+    }
+
+    public boolean isClearSession() {
+        return clearSession;
+    }
+
+    public void setClearSession(boolean clearSession) {
+        this.clearSession = clearSession;
     }
 }

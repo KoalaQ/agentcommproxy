@@ -94,6 +94,12 @@ public class SQLiteStore {
             try {
                 stmt.execute("ALTER TABLE requests ADD COLUMN proxy_type TEXT DEFAULT 'openclaw'");
             } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE requests ADD COLUMN task_id TEXT");
+            } catch (SQLException ignored) {}
+            try {
+                stmt.execute("ALTER TABLE requests ADD COLUMN session_id TEXT");
+            } catch (SQLException ignored) {}
 
             log.info("Database initialized at: {}", dbPath);
         } catch (SQLException e) {
@@ -116,8 +122,8 @@ public class SQLiteStore {
 
         String sql =
             "INSERT OR REPLACE INTO requests " +
-            "(id, sender, target_agent, message, status, response, error, execute_retry_count, callback_retry_count, sync, timeout, created_at, updated_at, sender_type, callback_url, proxy_type) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "(id, sender, target_agent, message, status, response, error, execute_retry_count, callback_retry_count, sync, timeout, created_at, updated_at, sender_type, callback_url, proxy_type, task_id, session_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -138,6 +144,8 @@ public class SQLiteStore {
             ps.setString(14, request.getSenderType() != null ? request.getSenderType().name() : SenderType.CLI.name());
             ps.setString(15, request.getCallbackUrl());
             ps.setString(16, request.getProxyType() != null ? request.getProxyType().name() : ProxyType.OPENCLAW.name());
+            ps.setString(17, request.getTaskId());
+            ps.setString(18, request.getSessionId());
 
             ps.executeUpdate();
             log.debug("Saved request: {}", request.getId());
@@ -560,6 +568,18 @@ public class SQLiteStore {
             }
         } catch (SQLException e) {
             request.setProxyType(ProxyType.OPENCLAW);
+        }
+
+        // 读取 task_id 和 session_id
+        try {
+            request.setTaskId(rs.getString("task_id"));
+        } catch (SQLException e) {
+            request.setTaskId(null);
+        }
+        try {
+            request.setSessionId(rs.getString("session_id"));
+        } catch (SQLException e) {
+            request.setSessionId(null);
         }
 
         return request;

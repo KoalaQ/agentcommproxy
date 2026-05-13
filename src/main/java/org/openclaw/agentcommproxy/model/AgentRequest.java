@@ -22,6 +22,10 @@ public class AgentRequest {
     private SenderType senderType;      // 请求方类型（CLI/HTTP_CALLBACK/HTTP_POLL）
     private String callbackUrl;         // HTTP 回调地址
     private ProxyType proxyType;        // Proxy 类型（OPENCLAW/HTTP/WEBSOCKET/CUSTOM）
+    private String taskId;              // 业务任务ID（由应用层提供）
+    private SessionMode sessionMode;    // 会话模式（MAIN/INDEPENDENT）
+    private String sessionId;           // 底层会话ID（系统内部管理）
+    private boolean clearSession;       // 是否清空会话历史（默认 false）
 
     public AgentRequest() {
         this.status = MessageStatus.PENDING;
@@ -29,6 +33,7 @@ public class AgentRequest {
         this.callbackRetryCount = 0;
         this.sync = false;
         this.timeout = 300;
+        this.clearSession = false;      // 默认不清空
         this.createdAt = Instant.now().toEpochMilli();
         this.updatedAt = this.createdAt;
     }
@@ -81,4 +86,16 @@ public class AgentRequest {
 
     public ProxyType getProxyType() { return proxyType; }
     public void setProxyType(ProxyType proxyType) { this.proxyType = proxyType; }
+
+    public String getTaskId() { return taskId; }
+    public void setTaskId(String taskId) { this.taskId = taskId; }
+
+    public SessionMode getSessionMode() { return sessionMode; }
+    public void setSessionMode(SessionMode sessionMode) { this.sessionMode = sessionMode; }
+
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+
+    public boolean isClearSession() { return clearSession; }
+    public void setClearSession(boolean clearSession) { this.clearSession = clearSession; }
 }

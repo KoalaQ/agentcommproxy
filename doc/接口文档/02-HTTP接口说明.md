@@ -48,6 +48,9 @@ API Key 获取方式：
 | timeout | 否 | Integer | 超时秒数 | 300 |
 | callbackUrl | 否 | String | 回调地址（异步模式） | - |
 | proxy | 否 | String | Proxy 类型 | openclaw |
+| taskId | 否 | String | 业务任务 ID（用于独立会话） | - |
+| sessionMode | 否 | String | 会话模式（main/independent） | main |
+| clearSession | 否 | Boolean | 清空会话历史（仅 independent 有效） | false |
 
 #### Proxy 类型
 
@@ -56,6 +59,23 @@ API Key 获取方式：
 | openclaw | OpenClaw CLI 命令执行（默认） |
 | http | HTTP API 调用（未来支持） |
 | websocket | WebSocket 通信（未来支持） |
+
+#### 会话模式说明
+
+| 模式 | 说明 | 适用场景 |
+|-----|------|---------|
+| main | 主会话模式，所有消息共用一个会话 | 默认模式 |
+| independent | 独立会话模式，每个 taskId 有独立会话上下文 | 需要隔离对话历史 |
+
+**sessionMode 规则：**
+- 未指定时默认使用 `main`
+- `independent` 模式需要提供 `taskId`
+- `main` 模式下 `taskId` 参数被忽略
+
+**clearSession 规则：**
+- 仅在 `sessionMode=independent` 时有效
+- `true`: 清空该会话的聊天历史，从空白开始
+- `false`（默认）: 保留会话历史，新消息追加到现有历史
 
 #### 请求示例
 
@@ -67,6 +87,33 @@ API Key 获取方式：
   "sync": false,
   "timeout": 300,
   "callbackUrl": "http://your-server/api/callback"
+}
+```
+
+**独立会话模式示例：**
+
+```json
+{
+  "agent": "AgentB",
+  "sender": "AgentA",
+  "message": "task message",
+  "sync": true,
+  "taskId": "order-001",
+  "sessionMode": "independent"
+}
+```
+
+**清空会话历史示例：**
+
+```json
+{
+  "agent": "AgentB",
+  "sender": "AgentA",
+  "message": "start fresh",
+  "sync": true,
+  "taskId": "order-001",
+  "sessionMode": "independent",
+  "clearSession": true
 }
 ```
 
@@ -122,6 +169,18 @@ curl -X POST http://localhost:8080/api/v1/send \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"agent":"AgentB","sender":"AgentA","message":"hello","sync":true}'
+
+# 独立会话模式
+curl -X POST http://localhost:8080/api/v1/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"agent":"AgentB","sender":"AgentA","message":"task msg","sync":true,"taskId":"order-001","sessionMode":"independent"}'
+
+# 独立会话模式，清空历史
+curl -X POST http://localhost:8080/api/v1/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"agent":"AgentB","sender":"AgentA","message":"new task","sync":true,"taskId":"order-001","sessionMode":"independent","clearSession":true}'
 ```
 
 ### 1.2 查询状态

@@ -14,6 +14,7 @@ import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
 import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
+import org.openclaw.agentcommproxy.model.SessionMode;
 import org.openclaw.agentcommproxy.service.AgentService;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
 import org.slf4j.Logger;
@@ -185,6 +186,25 @@ public class HttpServerManager {
             // 设置 proxyType
             if (request.getProxy() != null && !request.getProxy().isEmpty()) {
                 agentRequest.setProxyType(ProxyType.fromCode(request.getProxy()));
+            }
+
+            // 设置 taskId 和 sessionMode
+            if (request.getTaskId() != null && !request.getTaskId().isEmpty()) {
+                agentRequest.setTaskId(request.getTaskId());
+            }
+            if (request.getSessionMode() != null && !request.getSessionMode().isEmpty()) {
+                agentRequest.setSessionMode(SessionMode.fromCode(request.getSessionMode()));
+            } else {
+                // 未指定 sessionMode，默认使用 MAIN
+                agentRequest.setSessionMode(SessionMode.MAIN);
+            }
+
+            // 设置 clearSession（仅 INDEPENDENT 模式有效）
+            if (request.isClearSession() && agentRequest.getSessionMode() != SessionMode.INDEPENDENT) {
+                log.warn("clearSession is only supported in INDEPENDENT mode, ignoring");
+                agentRequest.setClearSession(false);
+            } else {
+                agentRequest.setClearSession(request.isClearSession());
             }
 
             SendResponse response;

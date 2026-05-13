@@ -20,8 +20,8 @@ public class OpenClawProxy implements CommandProxy {
     }
 
     @Override
-    public CommandResult execute(String agent, String message, int timeout) {
-        String command = buildCommand(agent, message, timeout);
+    public CommandResult execute(String agent, String message, int timeout, String sessionId) {
+        String command = buildCommand(agent, message, timeout, sessionId);
         log.info("Executing command: {}", command);
 
         try {
@@ -101,11 +101,17 @@ public class OpenClawProxy implements CommandProxy {
     }
 
     @Override
-    public String buildCommand(String agent, String message, int timeout) {
-        // 对消息进行引号转义处理
+    public String buildCommand(String agent, String message, int timeout, String sessionId) {
         String escapedMessage = escapeMessage(message);
-        return String.format("openclaw agent --agent %s --message \"%s\" --timeout %d",
-                agent, escapedMessage, timeout);
+        if (sessionId != null && !sessionId.isEmpty()) {
+            // 使用 --session-id 参数，session 已关联 agent，无需指定 agent
+            return String.format("openclaw agent --session-id %s --message \"%s\" --timeout %d",
+                    sessionId, escapedMessage, timeout);
+        } else {
+            // 主会话模式，需要指定 agent
+            return String.format("openclaw agent --agent %s --message \"%s\" --timeout %d",
+                    agent, escapedMessage, timeout);
+        }
     }
 
     /**

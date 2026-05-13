@@ -32,6 +32,7 @@ public class ConfigManager {
     private static final int DEFAULT_CLEANUP_DAYS = 7;
     private static final String DEFAULT_CLEANUP_STATUS = "DONE";
     private static final String DEFAULT_PROXY_TYPE = "openclaw";
+    private static final String DEFAULT_OPENCLAW_DATA_DIR = ".openclaw";  // 默认 openclaw 数据目录
 
     private Properties properties;
     private Path configPath;
@@ -85,6 +86,8 @@ public class ConfigManager {
         properties.setProperty("cleanup.status", DEFAULT_CLEANUP_STATUS);
         // Proxy 配置
         properties.setProperty("proxy.default", DEFAULT_PROXY_TYPE);
+        // OpenClaw 数据目录配置（默认 ~/.openclaw）
+        properties.setProperty("openclaw.data.dir", DEFAULT_OPENCLAW_DATA_DIR);
     }
 
     private void saveConfig() {
@@ -191,6 +194,33 @@ public class ConfigManager {
 
     public void setDefaultProxyType(ProxyType proxyType) {
         properties.setProperty("proxy.default", proxyType.getCode());
+        saveConfig();
+    }
+
+    // OpenClaw 数据目录配置
+    /**
+     * 获取 openclaw 数据目录的完整路径
+     * 如果配置了 openclaw.data.dir，则使用配置值（相对于 userHome 或绝对路径）
+     * 默认为 ~/.openclaw
+     */
+    public String getOpenClawDataDir() {
+        String dataDir = properties.getProperty("openclaw.data.dir", DEFAULT_OPENCLAW_DATA_DIR);
+        String userHome = System.getProperty("user.home");
+
+        // 如果是绝对路径，直接返回
+        if (dataDir.startsWith("/") || dataDir.contains(":") || dataDir.startsWith("~")) {
+            if (dataDir.startsWith("~")) {
+                return Paths.get(userHome, dataDir.substring(1)).toString();
+            }
+            return dataDir;
+        }
+
+        // 相对路径，拼接 userHome
+        return Paths.get(userHome, dataDir).toString();
+    }
+
+    public void setOpenClawDataDir(String dataDir) {
+        properties.setProperty("openclaw.data.dir", dataDir);
         saveConfig();
     }
 

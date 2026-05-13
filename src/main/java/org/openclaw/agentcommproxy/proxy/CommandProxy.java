@@ -12,16 +12,35 @@ public interface CommandProxy {
     String getName();
 
     /**
-     * 执行命令
+     * 执行命令（使用指定会话）
+     * @param agent 目标 Agent 名称
+     * @param message 消息内容
+     * @param timeout 超时时间（秒）
+     * @param sessionId 会话ID（可选，独立会话模式使用）
+     * @return 执行结果
+     */
+    CommandResult execute(String agent, String message, int timeout, String sessionId);
+
+    /**
+     * 执行命令（默认会话）
      * @param agent 目标 Agent 名称
      * @param message 消息内容
      * @param timeout 超时时间（秒）
      * @return 执行结果
      */
-    CommandResult execute(String agent, String message, int timeout);
+    default CommandResult execute(String agent, String message, int timeout) {
+        return execute(agent, message, timeout, null);
+    }
 
     /**
-     * 构建命令字符串
+     * 构建命令字符串（使用指定会话）
      */
-    String buildCommand(String agent, String message, int timeout);
+    String buildCommand(String agent, String message, int timeout, String sessionId);
+
+    /**
+     * 构建命令字符串（默认会话）
+     */
+    default String buildCommand(String agent, String message, int timeout) {
+        return buildCommand(agent, message, timeout, null);
+    }
 }

@@ -7,9 +7,11 @@ import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
 import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
+import org.openclaw.agentcommproxy.model.SessionMode;
 import org.openclaw.agentcommproxy.proxy.CommandProxy;
 import org.openclaw.agentcommproxy.proxy.CommandProxyFactory;
 import org.openclaw.agentcommproxy.proxy.CommandResult;
+import org.openclaw.agentcommproxy.session.SessionManager;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +31,13 @@ public class AgentService {
     private final ConfigManager configManager;
     private final SQLiteStore store;
     private final CallbackHandlerFactory callbackHandlerFactory;
+    private final SessionManager sessionManager;
 
     public AgentService(ConfigManager configManager, SQLiteStore store) {
         this.configManager = configManager;
         this.store = store;
         this.callbackHandlerFactory = new CallbackHandlerFactory(configManager);
+        this.sessionManager = new SessionManager(configManager);
     }
 
     /**
@@ -49,12 +53,29 @@ public class AgentService {
             request.setProxyType(configManager.getDefaultProxyType());
         }
 
+        // 设置默认 sessionMode
+        if (request.getSessionMode() == null) {
+            request.setSessionMode(SessionMode.MAIN);
+        }
+
+        // 根据 sessionMode 获取或创建 sessionId
+        String sessionId = sessionManager.getOrCreateSessionId(
+            request.getTargetAgent(),
+            request.getTaskId(),
+            request.getSessionMode(),
+            request.isClearSession()
+        );
+        request.setSessionId(sessionId);
+        log.info("Sync request: agent={}, taskId={}, sessionMode={}, sessionId={}, clearSession={}",
+            request.getTargetAgent(), request.getTaskId(), request.getSessionMode(), sessionId, request.isClearSession());
+
         store.saveRequest(request);
         log.info("Sync request saved: {}", request.getId());
 
         // 根据 proxyType 选择 proxy
         CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
-        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
+        log.info("Sync request: executing with sessionId={}", sessionId);
+        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout(), sessionId);
 
         if (result.isSuccess()) {
             request.setStatus(MessageStatus.DONE);
@@ -82,8 +103,23 @@ public class AgentService {
             request.setProxyType(configManager.getDefaultProxyType());
         }
 
+        // 设置默认 sessionMode
+        if (request.getSessionMode() == null) {
+            request.setSessionMode(SessionMode.MAIN);
+        }
+
+        // 根据 sessionMode 获取或创建 sessionId
+        String sessionId = sessionManager.getOrCreateSessionId(
+            request.getTargetAgent(),
+            request.getTaskId(),
+            request.getSessionMode(),
+            request.isClearSession()
+        );
+        request.setSessionId(sessionId);
+
         store.saveRequest(request);
-        log.info("Async request saved: {} - will be processed by daemon", request.getId());
+        log.info("Async request saved: taskId={}, sessionMode={}, sessionId={}, clearSession={}",
+            request.getTaskId(), request.getSessionMode(), sessionId, request.isClearSession());
 
         return request;
     }
@@ -96,7 +132,7 @@ public class AgentService {
 
         // 根据 proxyType 选择 proxy
         CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
-        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout());
+        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout(), request.getSessionId());
 
         if (result.isSuccess()) {
             request.setResponse(result.getOutput());

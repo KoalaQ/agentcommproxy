@@ -5,8 +5,11 @@ import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
 import org.openclaw.agentcommproxy.model.ProxyType;
 import org.openclaw.agentcommproxy.model.SenderType;
+import org.openclaw.agentcommproxy.model.SessionMode;
 import org.openclaw.agentcommproxy.service.AgentService;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -18,6 +21,7 @@ import java.util.concurrent.Callable;
     description = "Send message to target agent"
 )
 public class AgentCommand implements Callable<Integer> {
+    private static final Logger log = LoggerFactory.getLogger(AgentCommand.class);
 
     @Option(names = {"--agent"}, description = "Target agent name", required = true)
     private String targetAgent;
@@ -39,6 +43,15 @@ public class AgentCommand implements Callable<Integer> {
 
     @Option(names = {"--proxy"}, description = "Proxy type (openclaw/http/websocket/custom)")
     private String proxyType;
+
+    @Option(names = {"--task-id"}, description = "Business task ID (for independent session)")
+    private String taskId;
+
+    @Option(names = {"--session-mode"}, description = "Session mode (main/independent)")
+    private String sessionMode;
+
+    @Option(names = {"--clear-session"}, description = "Clear session history (true/false, default false)")
+    private boolean clearSession;
 
     @Override
     public Integer call() {
@@ -62,6 +75,32 @@ public class AgentCommand implements Callable<Integer> {
         // 设置 proxyType
         if (proxyType != null && !proxyType.isEmpty()) {
             request.setProxyType(ProxyType.fromCode(proxyType));
+        }
+
+        // 设置 taskId 和 sessionMode
+        if (taskId != null && !taskId.isEmpty()) {
+            request.setTaskId(taskId);
+            log.info("CLI: taskId set to: {}", taskId);
+        }
+        if (sessionMode != null && !sessionMode.isEmpty()) {
+            request.setSessionMode(SessionMode.fromCode(sessionMode));
+            log.info("CLI: sessionMode set to: {}", sessionMode);
+        } else {
+            // 未指定 sessionMode，默认使用 MAIN
+            request.setSessionMode(SessionMode.MAIN);
+            log.info("CLI: sessionMode defaulted to MAIN");
+        }
+
+        log.info("CLI: Final request - taskId={}, sessionMode={}, clearSession={}",
+            request.getTaskId(), request.getSessionMode(), request.isClearSession());
+
+        // 设置 clearSession（仅 INDEPENDENT 模式有效）
+        request.setClearSession(clearSession);
+        if (clearSession && request.getSessionMode() != SessionMode.INDEPENDENT) {
+            log.warn("CLI: clearSession is only supported in INDEPENDENT mode, ignoring");
+            request.setClearSession(false);
+        } else if (clearSession) {
+            log.info("CLI: clearSession set to true");
         }
 
         // 指定请求ID（用于重试或修改）

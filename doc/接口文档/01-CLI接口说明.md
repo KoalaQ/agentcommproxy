@@ -40,6 +40,26 @@ agentproxy agent --agent <target> --sender <sender> --message <message> [--sync]
 | `--timeout <seconds>` | 超时时间（秒） | 300 |
 | `--request-id <id>` | 指定请求 ID（用于重试） | 自动生成 UUID |
 | `--proxy <type>` | Proxy 类型（openclaw/http/websocket） | openclaw |
+| `--task-id <id>` | 业务任务 ID（用于独立会话） | - |
+| `--session-mode <mode>` | 会话模式（main/independent） | main |
+| `--clear-session` | 清空会话历史（仅 independent 模式有效） | false |
+
+### 会话模式说明
+
+| 模式 | 说明 | 适用场景 |
+|-----|------|---------|
+| main | 主会话模式，所有消息共用一个会话 | 默认模式 |
+| independent | 独立会话模式，每个 taskId 有独立会话上下文 | 需要隔离对话历史 |
+
+**sessionMode 规则：**
+- 未指定时默认使用 `main`
+- `independent` 模式需要提供 `--task-id`
+- `main` 模式下 `--task-id` 参数被忽略
+
+**clearSession 规则：**
+- 仅在 `--session-mode independent` 时有效
+- `true`: 清空该会话的聊天历史，从空白开始
+- `false`（默认）: 保留会话历史，新消息追加到现有历史
 
 ### 示例
 
@@ -58,6 +78,15 @@ agentproxy agent --agent AgentB --sender AgentA --message "retry task" --request
 
 # 指定 Proxy 类型
 agentproxy agent --agent AgentB --sender AgentA --message "hello" --proxy openclaw
+
+# 独立会话模式（每个 taskId 有独立上下文）
+agentproxy agent --agent AgentB --sender AgentA --message "task msg" --task-id "order-001" --session-mode independent --sync
+
+# 独立会话模式，清空历史重新开始
+agentproxy agent --agent AgentB --sender AgentA --message "new task" --task-id "order-001" --session-mode independent --clear-session --sync
+
+# 主会话模式（默认）
+agentproxy agent --agent AgentB --sender AgentA --message "normal msg" --sync
 ```
 
 ### 输出说明
@@ -456,6 +485,7 @@ Cleared 50 messages with status: DONE
 | http.port | HTTP 服务端口 | 8080 |
 | http.api.key | API Key | 自动生成 UUID |
 | proxy.default | 默认 Proxy 类型 | openclaw |
+| openclaw.data.dir | OpenClaw 数据目录 | .openclaw |
 | cleanup.enabled | 是否启用定期清理 | true |
 | cleanup.days | 清理保留天数 | 7 |
 | cleanup.status | 清理状态 | DONE |
@@ -484,6 +514,9 @@ http.api.key=abc-123-def-456
 
 # Proxy 配置
 proxy.default=openclaw
+
+# OpenClaw 数据目录（sessions.json 所在目录）
+openclaw.data.dir=.openclaw
 
 # 定期清理配置
 cleanup.enabled=true
