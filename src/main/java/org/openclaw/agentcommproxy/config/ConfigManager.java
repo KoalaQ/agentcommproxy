@@ -33,6 +33,10 @@ public class ConfigManager {
     private static final String DEFAULT_CLEANUP_STATUS = "DONE";
     private static final String DEFAULT_PROXY_TYPE = "openclaw";
     private static final String DEFAULT_OPENCLAW_DATA_DIR = ".openclaw";  // 默认 openclaw 数据目录
+    // Claude Code 配置
+    private static final int DEFAULT_CLAUDE_CODE_TIMEOUT = 1800;  // 30分钟
+    private static final int DEFAULT_CLAUDE_CODE_RETRY_COUNT = 3;
+    private static final int DEFAULT_CLAUDE_CODE_RETRY_INTERVAL = 10;
 
     private Properties properties;
     private Path configPath;
@@ -88,6 +92,10 @@ public class ConfigManager {
         properties.setProperty("proxy.default", DEFAULT_PROXY_TYPE);
         // OpenClaw 数据目录配置（默认 ~/.openclaw）
         properties.setProperty("openclaw.data.dir", DEFAULT_OPENCLAW_DATA_DIR);
+        // Claude Code 配置
+        properties.setProperty("proxy.claude-code.timeout", String.valueOf(DEFAULT_CLAUDE_CODE_TIMEOUT));
+        properties.setProperty("proxy.claude-code.retry.count", String.valueOf(DEFAULT_CLAUDE_CODE_RETRY_COUNT));
+        properties.setProperty("proxy.claude-code.retry.interval", String.valueOf(DEFAULT_CLAUDE_CODE_RETRY_INTERVAL));
     }
 
     private void saveConfig() {
@@ -222,6 +230,19 @@ public class ConfigManager {
     public void setOpenClawDataDir(String dataDir) {
         properties.setProperty("openclaw.data.dir", dataDir);
         saveConfig();
+    }
+
+    // Claude Code 配置
+    public int getClaudeCodeTimeout() {
+        return getInt("proxy.claude-code.timeout", DEFAULT_CLAUDE_CODE_TIMEOUT);
+    }
+
+    public int getClaudeCodeRetryCount() {
+        return getInt("proxy.claude-code.retry.count", DEFAULT_CLAUDE_CODE_RETRY_COUNT);
+    }
+
+    public int getClaudeCodeRetryInterval() {
+        return getInt("proxy.claude-code.retry.interval", DEFAULT_CLAUDE_CODE_RETRY_INTERVAL);
     }
 
     private int getInt(String key, int defaultValue) {

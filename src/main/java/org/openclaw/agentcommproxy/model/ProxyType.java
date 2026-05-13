@@ -7,7 +7,8 @@ public enum ProxyType {
     OPENCLAW("openclaw", "OpenClaw CLI 命令"),
     HTTP("http", "HTTP API 调用"),
     WEBSOCKET("websocket", "WebSocket 通信"),
-    CUSTOM("custom", "自定义命令");
+    CUSTOM("custom", "自定义命令"),
+    CLAUDE_CODE("claude-code", "Claude Code Agent");
 
     private final String code;
     private final String description;

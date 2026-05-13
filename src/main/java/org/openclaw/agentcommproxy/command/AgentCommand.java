@@ -94,13 +94,10 @@ public class AgentCommand implements Callable<Integer> {
         log.info("CLI: Final request - taskId={}, sessionMode={}, clearSession={}",
             request.getTaskId(), request.getSessionMode(), request.isClearSession());
 
-        // 设置 clearSession（仅 INDEPENDENT 模式有效）
+        // 设置 clearSession（支持 MAIN 和 INDEPENDENT 模式）
         request.setClearSession(clearSession);
-        if (clearSession && request.getSessionMode() != SessionMode.INDEPENDENT) {
-            log.warn("CLI: clearSession is only supported in INDEPENDENT mode, ignoring");
-            request.setClearSession(false);
-        } else if (clearSession) {
-            log.info("CLI: clearSession set to true");
+        if (clearSession) {
+            log.info("CLI: clearSession set to true for mode {}", request.getSessionMode());
         }
 
         // 指定请求ID（用于重试或修改）

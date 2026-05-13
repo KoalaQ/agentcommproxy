@@ -33,7 +33,7 @@ public class AgentRequest {
         this.callbackRetryCount = 0;
         this.sync = false;
         this.timeout = 300;
-        this.clearSession = false;      // 默认不清空
+        this.clearSession = false;
         this.createdAt = Instant.now().toEpochMilli();
         this.updatedAt = this.createdAt;
     }

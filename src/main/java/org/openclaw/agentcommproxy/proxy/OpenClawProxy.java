@@ -1,18 +1,35 @@
 package org.openclaw.agentcommproxy.proxy;
 
+import org.openclaw.agentcommproxy.config.ConfigManager;
+import org.openclaw.agentcommproxy.session.OpenClawSessionHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
  * OpenClaw 命令代理实现
- * 执行 openclaw agent 命令
+ * sessionId=null：创建新会话（编辑 sessions.json）
+ * sessionId有值：使用已有会话（--session-id）
  */
 public class OpenClawProxy implements CommandProxy {
     private static final Logger log = LoggerFactory.getLogger(OpenClawProxy.class);
+
+    private final ConfigManager configManager;
+    private final OpenClawSessionHelper sessionHelper;
+
+    public OpenClawProxy() {
+        this.configManager = new ConfigManager();
+        this.sessionHelper = new OpenClawSessionHelper(configManager);
+    }
+
+    public OpenClawProxy(ConfigManager configManager) {
+        this.configManager = configManager;
+        this.sessionHelper = new OpenClawSessionHelper(configManager);
+    }
 
     @Override
     public String getName() {
@@ -21,13 +38,26 @@ public class OpenClawProxy implements CommandProxy {
 
     @Override
     public CommandResult execute(String agent, String message, int timeout, String sessionId) {
-        String command = buildCommand(agent, message, timeout, sessionId);
+        String actualSessionId = sessionId;
+
+        // sessionId=null 时需要创建新会话（INDEPENDENT模式首次调用）
+        if (sessionId == null || sessionId.isEmpty()) {
+            // 对于 INDEPENDENT 模式，需要 taskId 来创建独立会话
+            // 但 execute 方法签名中没有 taskId，这里暂时生成一个 UUID
+            // 实际使用时，AgentService 会先通过 SessionManager.findSessionIdByTaskId 查询
+            // 如果查不到，需要传入 taskId 来创建
+            //
+            // 简化方案：MAIN 模式不创建 sessionId，直接用 --agent 参数
+            // INDEPENDENT 模式的创建逻辑在 AgentService 中处理
+            log.info("No sessionId provided, using MAIN mode (agent-based)");
+        }
+
+        String command = buildCommand(agent, message, timeout, actualSessionId);
         log.info("Executing command: {}", command);
 
         try {
             ProcessBuilder pb = new ProcessBuilder();
 
-            // Windows 和 Unix 兼容处理
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("win")) {
                 pb.command("cmd", "/c", command);
@@ -38,7 +68,6 @@ public class OpenClawProxy implements CommandProxy {
             pb.redirectErrorStream(false);
             Process process = pb.start();
 
-            // 读取输出
             StringBuilder output = new StringBuilder();
             StringBuilder error = new StringBuilder();
 
@@ -46,7 +75,6 @@ public class OpenClawProxy implements CommandProxy {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        // 过滤掉日志行（以 [ 开头的）
                         if (!isLogLevel(line)) {
                             output.append(line).append("\n");
                         }
@@ -70,7 +98,6 @@ public class OpenClawProxy implements CommandProxy {
             outputThread.start();
             errorThread.start();
 
-            // 等待完成或超时
             boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
 
             outputThread.join(1000);
@@ -88,7 +115,8 @@ public class OpenClawProxy implements CommandProxy {
 
             if (exitCode == 0) {
                 log.info("Command succeeded with output: {}", outputStr);
-                return CommandResult.success(outputStr);
+                // 返回 sessionId（如果有的话）
+                return CommandResult.success(outputStr, actualSessionId);
             } else {
                 log.warn("Command failed with exit code {}: {}", exitCode, errorStr);
                 return CommandResult.failure(errorStr, exitCode);
@@ -100,76 +128,68 @@ public class OpenClawProxy implements CommandProxy {
         }
     }
 
+    /**
+     * 创建独立会话（INDEPENDENT 模式）
+     * 由 AgentService 调用
+     */
+    public String createIndependentSession(String agentId, String taskId, boolean clearSession) {
+        sessionHelper.ensureMainSessionExists(agentId);
+        return sessionHelper.createIndependentSession(agentId, taskId, clearSession);
+    }
+
     @Override
     public String buildCommand(String agent, String message, int timeout, String sessionId) {
         String escapedMessage = escapeMessage(message);
         if (sessionId != null && !sessionId.isEmpty()) {
-            // 使用 --session-id 参数，session 已关联 agent，无需指定 agent
             return String.format("openclaw agent --session-id %s --message \"%s\" --timeout %d",
                     sessionId, escapedMessage, timeout);
         } else {
-            // 主会话模式，需要指定 agent
             return String.format("openclaw agent --agent %s --message \"%s\" --timeout %d",
                     agent, escapedMessage, timeout);
         }
     }
 
-    /**
-     * 转义消息中的特殊字符
-     */
     private String escapeMessage(String message) {
         if (message == null) {
             return "";
         }
-        // 转义双引号和反斜杠
         return message.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
-    /**
-     * 判断是否为日志行（需要过滤）
-     */
     private boolean isLogLevel(String line) {
         if (line == null || line.isEmpty()) {
-            return true;  // 过滤空行
+            return true;
         }
 
-        // 移除 ANSI 颜色码，获取纯文本
         String cleanLine = line.replaceAll("\\x1b\\[[0-9;]*m", "")
                                .replaceAll("\\[\\d+m", "");
 
         String trimmed = cleanLine.trim();
 
-        // 过滤空内容
         if (trimmed.isEmpty()) {
             return true;
         }
 
-        // 过滤 Config warnings
         if (trimmed.startsWith("Config warnings")) {
             return true;
         }
 
-        // 过滤 OpenClaw 版本信息
         if (trimmed.contains("OpenClaw") && trimmed.contains("—")) {
             return true;
         }
 
-        // 过滤时间戳开头的日志 (如 14:56:55+08:00)
         if (trimmed.matches("^\\d{2}:\\d{2}:\\d{2}.*")) {
             return true;
         }
 
-        // 过滤以 [plugins] 开头的日志（包含颜色码的情况）
         if (trimmed.startsWith("[plugins]")) {
             return true;
         }
 
-        // 过滤包含 Registered 的插件注册日志
         if (trimmed.contains("Registered")) {
             return true;
         }
 
-        // 过滤标准日志级别开头
         if (trimmed.startsWith("[INFO]")
             || trimmed.startsWith("[DEBUG]")
             || trimmed.startsWith("[WARN]")
@@ -177,7 +197,6 @@ public class OpenClawProxy implements CommandProxy {
             return true;
         }
 
-        // 过滤分隔符符号
         if (trimmed.equals("│") || trimmed.equals("◇") || trimmed.equals("◆")) {
             return true;
         }

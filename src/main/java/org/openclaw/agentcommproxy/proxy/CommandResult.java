@@ -8,16 +8,26 @@ public class CommandResult {
     private String output;
     private String error;
     private int exitCode;
+    private String sessionId;  // 新增：新建会话时返回
 
-    public CommandResult(boolean success, String output, String error, int exitCode) {
+    public CommandResult(boolean success, String output, String error, int exitCode, String sessionId) {
         this.success = success;
         this.output = output;
         this.error = error;
         this.exitCode = exitCode;
+        this.sessionId = sessionId;
+    }
+
+    public CommandResult(boolean success, String output, String error, int exitCode) {
+        this(success, output, error, exitCode, null);
     }
 
     public static CommandResult success(String output) {
         return new CommandResult(true, output, null, 0);
+    }
+
+    public static CommandResult success(String output, String sessionId) {
+        return new CommandResult(true, output, null, 0, sessionId);
     }
 
     public static CommandResult failure(String error, int exitCode) {
@@ -34,4 +44,5 @@ public class CommandResult {
     public String getError() { return error; }
     public int getExitCode() { return exitCode; }
     public boolean isTimeout() { return exitCode == -1; }
+    public String getSessionId() { return sessionId; }
 }

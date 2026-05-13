@@ -52,6 +52,14 @@ public class ListCommand implements Callable<Integer> {
             System.out.println("Exec Retry:  " + r.getExecuteRetryCount());
             System.out.println("Callback Retry: " + r.getCallbackRetryCount());
 
+            // Task ID and Session ID
+            if (r.getTaskId() != null && !r.getTaskId().isEmpty()) {
+                System.out.println("Task ID:     " + r.getTaskId());
+            }
+            if (r.getSessionId() != null && !r.getSessionId().isEmpty()) {
+                System.out.println("Session ID:  " + r.getSessionId());
+            }
+
             // Message
             String message = r.getMessage();
             if (message != null && !message.isEmpty()) {

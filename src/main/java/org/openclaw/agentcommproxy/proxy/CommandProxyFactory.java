@@ -1,5 +1,6 @@
 package org.openclaw.agentcommproxy.proxy;
 
+import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.ProxyType;
 
 import java.util.HashMap;
@@ -11,10 +12,12 @@ import java.util.Map;
  */
 public class CommandProxyFactory {
     private static final Map<String, CommandProxy> proxies = new HashMap<>();
+    private static final ConfigManager configManager = new ConfigManager();
 
     static {
         // 注册默认代理
-        registerProxy(new OpenClawProxy());
+        registerProxy(new OpenClawProxy(configManager));
+        registerProxy(new ClaudeCodeProxy());
     }
 
     /**

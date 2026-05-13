@@ -108,7 +108,7 @@ public class SQLiteStore {
         }
     }
 
-    private Connection getConnection() throws SQLException {
+    public Connection getConnection() throws SQLException {
         return DriverManager.getConnection("jdbc:sqlite:" + dbPath);
     }
 
@@ -245,6 +245,31 @@ public class SQLiteStore {
 
             ps.executeUpdate();
             log.debug("Updated request {} to status {}", id, status);
+        } catch (SQLException e) {
+            log.error("Failed to update request status: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 更新请求状态和 sessionId
+     */
+    public void updateRequestStatusAndSessionId(String id, MessageStatus status, String response, String error, String sessionId) {
+        String sql =
+            "UPDATE requests SET status = ?, response = ?, error = ?, session_id = ?, updated_at = ? " +
+            "WHERE id = ?";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, status.name());
+            ps.setString(2, response);
+            ps.setString(3, error);
+            ps.setString(4, sessionId);
+            ps.setLong(5, Instant.now().toEpochMilli());
+            ps.setString(6, id);
+
+            ps.executeUpdate();
+            log.debug("Updated request {} to status {} with sessionId {}", id, status, sessionId);
         } catch (SQLException e) {
             log.error("Failed to update request status: {}", e.getMessage());
         }
@@ -583,5 +608,32 @@ public class SQLiteStore {
         }
 
         return request;
+    }
+
+    /**
+     * 获取指定 Agent 最近一次成功请求的 session_id
+     * 用于 Claude Code 会话恢复
+     */
+    public String getLatestSessionId(String targetAgent, ProxyType proxyType) {
+        String sql =
+            "SELECT session_id FROM requests " +
+            "WHERE target_agent = ? AND proxy_type = ? AND status = 'DONE' AND session_id IS NOT NULL " +
+            "ORDER BY created_at DESC LIMIT 1";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, targetAgent);
+            ps.setString(2, proxyType.getCode());
+
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("session_id");
+            }
+            return null;
+        } catch (SQLException e) {
+            log.error("Failed to get latest session_id: {}", e.getMessage());
+            return null;
+        }
     }
 }

@@ -4,6 +4,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
 import org.openclaw.agentcommproxy.command.AgentCommand;
+import org.openclaw.agentcommproxy.command.ClaudeCodeCommand;
 import org.openclaw.agentcommproxy.command.ClearCommand;
 import org.openclaw.agentcommproxy.command.DaemonCommand;
 import org.openclaw.agentcommproxy.command.HttpCommand;
@@ -23,6 +24,7 @@ import org.slf4j.LoggerFactory;
     description = "Agent Communication Proxy CLI",
     subcommands = {
         AgentCommand.class,
+        ClaudeCodeCommand.class,
         ClearCommand.class,
         DaemonCommand.class,
         HttpCommand.class,
@@ -58,12 +60,13 @@ public class CliRunner implements Runnable {
         SQLiteStore store = new SQLiteStore(configManager);
         AgentService agentService = new AgentService(configManager, store);
 
-        // 启动守护进程（除非明确禁用或正在执行 daemon/http/clear 命令）
+        // 启动守护进程（除非明确禁用或正在执行 daemon/http/clear/claude-code 命令）
         // daemon 命令全部跳过自动启动，由 daemon 子命令自己控制
         boolean isDaemonCommand = containsCommand(args, "daemon");
         boolean isHttpCommand = containsCommand(args, "http");
         boolean isClearCommand = containsCommand(args, "clear");
-        boolean skipAutoStart = isDaemonCommand || isHttpCommand || isClearCommand;
+        boolean isClaudeCodeCommand = containsCommand(args, "claude-code");
+        boolean skipAutoStart = isDaemonCommand || isHttpCommand || isClearCommand || isClaudeCodeCommand;
 
         if (!skipAutoStart && !hasNoDaemonFlag(args) && configManager.isDaemonEnabled()) {
             DaemonManager daemon = DaemonManager.getInstance();

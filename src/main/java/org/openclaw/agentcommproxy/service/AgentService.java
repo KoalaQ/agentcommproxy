@@ -6,10 +6,9 @@ import org.openclaw.agentcommproxy.config.ConfigManager;
 import org.openclaw.agentcommproxy.model.AgentRequest;
 import org.openclaw.agentcommproxy.model.MessageStatus;
 import org.openclaw.agentcommproxy.model.ProxyType;
-import org.openclaw.agentcommproxy.model.SenderType;
 import org.openclaw.agentcommproxy.model.SessionMode;
-import org.openclaw.agentcommproxy.proxy.CommandProxy;
-import org.openclaw.agentcommproxy.proxy.CommandProxyFactory;
+import org.openclaw.agentcommproxy.provider.AgentProvider;
+import org.openclaw.agentcommproxy.provider.AgentProviderFactory;
 import org.openclaw.agentcommproxy.proxy.CommandResult;
 import org.openclaw.agentcommproxy.session.SessionManager;
 import org.openclaw.agentcommproxy.store.SQLiteStore;
@@ -21,6 +20,7 @@ import java.time.Instant;
 /**
  * Agent 消息处理服务
  * 核心业务逻辑
+ * 通过 AgentProvider 解耦，支持扩展新 Agent 工具
  */
 public class AgentService {
     private static final Logger log = LoggerFactory.getLogger(AgentService.class);
@@ -31,13 +31,14 @@ public class AgentService {
     private final ConfigManager configManager;
     private final SQLiteStore store;
     private final CallbackHandlerFactory callbackHandlerFactory;
-    private final SessionManager sessionManager;
 
     public AgentService(ConfigManager configManager, SQLiteStore store) {
         this.configManager = configManager;
         this.store = store;
         this.callbackHandlerFactory = new CallbackHandlerFactory(configManager);
-        this.sessionManager = new SessionManager(configManager);
+
+        // 初始化 AgentProviderFactory
+        AgentProviderFactory.initialize(store, configManager);
     }
 
     /**
@@ -58,35 +59,74 @@ public class AgentService {
             request.setSessionMode(SessionMode.MAIN);
         }
 
-        // 根据 sessionMode 获取或创建 sessionId
-        String sessionId = sessionManager.getOrCreateSessionId(
-            request.getTargetAgent(),
-            request.getTaskId(),
-            request.getSessionMode(),
-            request.isClearSession()
-        );
-        request.setSessionId(sessionId);
-        log.info("Sync request: agent={}, taskId={}, sessionMode={}, sessionId={}, clearSession={}",
-            request.getTargetAgent(), request.getTaskId(), request.getSessionMode(), sessionId, request.isClearSession());
+        // 获取 AgentProvider
+        AgentProvider provider = AgentProviderFactory.getProvider(request.getProxyType());
+        SessionManager sessionManager = provider.getSessionManager();
 
+        // 获取 sessionId
+        String sessionId = getSessionId(sessionManager, request);
+
+        // INDEPENDENT 模式首次调用，需要预创建会话（OpenClaw 需要）
+        if (request.getSessionMode() == SessionMode.INDEPENDENT
+            && provider.needsPreCreateSession()
+            && (sessionId == null || sessionId.isEmpty())) {
+            sessionId = provider.createIndependentSession(
+                request.getTargetAgent(),
+                request.getTaskId(),
+                request.isClearSession()
+            );
+            log.info("Pre-created session for {}: {}", provider.getName(), sessionId);
+        }
+
+        log.info("Sync request: agent={}, taskId={}, sessionMode={}, sessionId={}, clearSession={}",
+            request.getTargetAgent(), request.getTaskId(), request.getSessionMode(),
+            sessionId, request.isClearSession());
+
+        // 保存请求
+        request.setSessionId(sessionId);
         store.saveRequest(request);
         log.info("Sync request saved: {}", request.getId());
 
-        // 根据 proxyType 选择 proxy
-        CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
-        log.info("Sync request: executing with sessionId={}", sessionId);
-        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout(), sessionId);
+        // 执行命令
+        CommandResult result = provider.getProxy().execute(
+            request.getTargetAgent(),
+            request.getMessage(),
+            request.getTimeout(),
+            sessionId
+        );
 
+        // 处理结果
         if (result.isSuccess()) {
             request.setStatus(MessageStatus.DONE);
             request.setResponse(result.getOutput());
+
+            // 更新 sessionId（如果 proxy 返回了新的）
+            String resultSessionId = result.getSessionId();
+            if (resultSessionId != null && !resultSessionId.equals(sessionId)) {
+                request.setSessionId(resultSessionId);
+                log.info("SessionId updated: {} -> {}", sessionId, resultSessionId);
+
+                // MAIN 模式需要保存到配置
+                if (request.getSessionMode() == SessionMode.MAIN) {
+                    sessionManager.setMainSessionId(request.getTargetAgent(), resultSessionId);
+                }
+            }
+
+            store.updateRequestStatusAndSessionId(
+                request.getId(),
+                request.getStatus(),
+                request.getResponse(),
+                request.getError(),
+                request.getSessionId()
+            );
         } else {
             request.setStatus(MessageStatus.ERROR);
             request.setError(result.getError());
+            store.updateRequestStatus(request.getId(), request.getStatus(), request.getResponse(), request.getError());
         }
-        store.updateRequestStatus(request.getId(), request.getStatus(), request.getResponse(), request.getError());
 
         log.info("Sync request completed: {} - {}", request.getId(), request.getStatus());
+
         return request;
     }
 
@@ -108,13 +148,12 @@ public class AgentService {
             request.setSessionMode(SessionMode.MAIN);
         }
 
-        // 根据 sessionMode 获取或创建 sessionId
-        String sessionId = sessionManager.getOrCreateSessionId(
-            request.getTargetAgent(),
-            request.getTaskId(),
-            request.getSessionMode(),
-            request.isClearSession()
-        );
+        // 获取 AgentProvider
+        AgentProvider provider = AgentProviderFactory.getProvider(request.getProxyType());
+        SessionManager sessionManager = provider.getSessionManager();
+
+        // 获取 sessionId
+        String sessionId = getSessionId(sessionManager, request);
         request.setSessionId(sessionId);
 
         store.saveRequest(request);
@@ -128,15 +167,55 @@ public class AgentService {
      * 处理执行请求（由 DaemonManager 调用）
      */
     public void processExecute(AgentRequest request) {
-        log.info("Executing request: {} via proxy: {}", request.getId(), request.getProxyType());
+        log.info("Executing request: {} via proxy: {}, sessionId={}",
+            request.getId(), request.getProxyType(), request.getSessionId());
 
-        // 根据 proxyType 选择 proxy
-        CommandProxy proxy = CommandProxyFactory.getProxy(request.getProxyType());
-        CommandResult result = proxy.execute(request.getTargetAgent(), request.getMessage(), request.getTimeout(), request.getSessionId());
+        AgentProvider provider = AgentProviderFactory.getProvider(request.getProxyType());
+        SessionManager sessionManager = provider.getSessionManager();
+
+        String sessionId = request.getSessionId();
+
+        // INDEPENDENT 模式首次调用，需要预创建会话（OpenClaw 需要）
+        if (request.getSessionMode() == SessionMode.INDEPENDENT
+            && provider.needsPreCreateSession()
+            && (sessionId == null || sessionId.isEmpty())) {
+            sessionId = provider.createIndependentSession(
+                request.getTargetAgent(),
+                request.getTaskId(),
+                request.isClearSession()
+            );
+            request.setSessionId(sessionId);
+            log.info("Pre-created session for {}: {}", provider.getName(), sessionId);
+        }
+
+        CommandResult result = provider.getProxy().execute(
+            request.getTargetAgent(),
+            request.getMessage(),
+            request.getTimeout(),
+            sessionId
+        );
 
         if (result.isSuccess()) {
             request.setResponse(result.getOutput());
-            store.updateRequestStatus(request.getId(), MessageStatus.EXECUTE_SUCCESS, result.getOutput(), null);
+
+            // 更新 sessionId（如果 proxy 返回了新的）
+            String resultSessionId = result.getSessionId();
+            if (resultSessionId != null && !resultSessionId.equals(sessionId)) {
+                request.setSessionId(resultSessionId);
+
+                // MAIN 模式需要保存到配置
+                if (request.getSessionMode() == SessionMode.MAIN) {
+                    sessionManager.setMainSessionId(request.getTargetAgent(), resultSessionId);
+                }
+            }
+
+            store.updateRequestStatusAndSessionId(
+                request.getId(),
+                MessageStatus.EXECUTE_SUCCESS,
+                result.getOutput(),
+                null,
+                request.getSessionId()
+            );
             log.info("Execute success: {}", request.getId());
 
             // 立即执行回调
@@ -150,12 +229,10 @@ public class AgentService {
 
     /**
      * 处理回调（策略模式）
-     * 由 DaemonManager 调用，根据 SenderType 选择不同的回调处理器
      */
     public void processCallback(AgentRequest request) {
         log.info("Callback request: {} to sender: {} via {}", request.getId(), request.getSender(), request.getSenderType());
 
-        // 获取对应的回调处理器
         CallbackHandler handler = callbackHandlerFactory.getHandler(request);
         boolean success = handler.doCallback(request);
 
@@ -164,6 +241,39 @@ public class AgentService {
             log.info("Callback success: {} via {}", request.getId(), handler.getHandlerType());
         } else {
             handleCallbackFailure(request);
+        }
+    }
+
+    /**
+     * 获取 sessionId
+     */
+    private String getSessionId(SessionManager sessionManager, AgentRequest request) {
+        if (request.getSessionMode() == SessionMode.MAIN) {
+            // MAIN 模式：获取 mainSessionId（可能为 null）
+            String sessionId = sessionManager.getMainSessionId(request.getTargetAgent());
+
+            // 如果 clearSession，清空 sessionId 让 proxy 重新创建
+            if (request.isClearSession() && sessionId != null) {
+                log.info("ClearSession requested, clearing mainSessionId: {}", sessionId);
+                sessionManager.setMainSessionId(request.getTargetAgent(), null);
+                return null;
+            }
+
+            return sessionId;
+        } else {
+            // INDEPENDENT 模式：从 requests 表查询
+            String sessionId = sessionManager.findSessionIdByTaskId(
+                request.getTargetAgent(),
+                request.getTaskId()
+            );
+
+            // 如果 clearSession，清空 sessionId
+            if (request.isClearSession()) {
+                log.info("ClearSession requested, clearing sessionId for taskId: {}", request.getTaskId());
+                return null;
+            }
+
+            return sessionId;
         }
     }
 
@@ -202,7 +312,7 @@ public class AgentService {
         store.incrementExecuteRetryCount(request.getId());
 
         int retryCount = request.getExecuteRetryCount() + 1;
-        request.setExecuteRetryCount(retryCount);  // 同步更新 request 对象
+        request.setExecuteRetryCount(retryCount);
 
         if (retryCount <= maxRetry) {
             long nextRetryAt = Instant.now().toEpochMilli() + (configManager.getAsyncRetryInterval() * 1000L);
