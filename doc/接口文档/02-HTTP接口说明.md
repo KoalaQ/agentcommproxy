@@ -57,8 +57,25 @@ API Key 获取方式：
 | 类型 | 说明 |
 |-----|------|
 | openclaw | OpenClaw CLI 命令执行（默认） |
+| claude-code | Claude Code CLI 命令执行 |
 | http | HTTP API 调用（未来支持） |
 | websocket | WebSocket 通信（未来支持） |
+
+#### Proxy 类型差异
+
+| 类型 | Agent 注册 | 会话管理 | 命令参数 |
+|-----|-----------|---------|---------|
+| openclaw | 无需注册 | MAIN 无 sessionId，INDEPENDENT 需编辑 sessions.json | `openclaw agent --agent/--session-id` |
+| claude-code | 需注册项目路径 | MAIN sessionId 存配置，INDEPENDENT 存 requests 表 | `claude --session-id/--resume` |
+
+**Claude Code Agent 注册：**
+
+使用 CLI 命令注册 Claude Code Agent：
+
+```bash
+agentcommproxy claude-code register --agent my-agent --project /path/to/project
+agentcommproxy claude-code list  # 查看已注册的 Agent
+```
 
 #### 会话模式说明
 
@@ -99,6 +116,32 @@ API Key 获取方式：
   "message": "task message",
   "sync": true,
   "taskId": "order-001",
+  "sessionMode": "independent"
+}
+```
+
+**Claude Code 示例：**
+
+```json
+{
+  "agent": "my-claude-agent",
+  "sender": "test",
+  "message": "what is 2+2?",
+  "sync": true,
+  "proxy": "claude-code"
+}
+```
+
+**Claude Code 独立会话示例：**
+
+```json
+{
+  "agent": "my-claude-agent",
+  "sender": "test",
+  "message": "analyze this code",
+  "sync": true,
+  "proxy": "claude-code",
+  "taskId": "code-review-001",
   "sessionMode": "independent"
 }
 ```
@@ -181,6 +224,18 @@ curl -X POST http://localhost:8080/api/v1/send \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"agent":"AgentB","sender":"AgentA","message":"new task","sync":true,"taskId":"order-001","sessionMode":"independent","clearSession":true}'
+
+# Claude Code MAIN 模式
+curl -X POST http://localhost:8080/api/v1/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"agent":"my-claude-agent","sender":"test","message":"what is 2+2?","sync":true,"proxy":"claude-code"}'
+
+# Claude Code INDEPENDENT 模式
+curl -X POST http://localhost:8080/api/v1/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"agent":"my-claude-agent","sender":"test","message":"analyze this","sync":true,"proxy":"claude-code","taskId":"task-001","sessionMode":"independent"}'
 ```
 
 ### 1.2 查询状态
@@ -603,4 +658,51 @@ if data['status'] == 'DONE':
     print(f"响应: {data['response']}")
 else:
     print(f"错误: {data['error']}")
+```
+
+### 6.4 Claude Code 示例
+
+```python
+import requests
+
+API_URL = "http://localhost:8080/api/v1"
+API_KEY = "your-api-key"
+
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": API_KEY
+}
+
+# Claude Code MAIN 模式（共享会话）
+response = requests.post(
+    f"{API_URL}/send",
+    headers=headers,
+    json={
+        "agent": "my-claude-agent",  # 需要先注册
+        "sender": "test",
+        "message": "what is 2+2?",
+        "sync": True,
+        "proxy": "claude-code",
+        "timeout": 60
+    }
+)
+
+print(response.json()['response'])
+
+# Claude Code INDEPENDENT 模式（独立会话）
+response = requests.post(
+    f"{API_URL}/send",
+    headers=headers,
+    json={
+        "agent": "my-claude-agent",
+        "sender": "test",
+        "message": "what was my previous question?",
+        "sync": True,
+        "proxy": "claude-code",
+        "taskId": "task-001",
+        "sessionMode": "independent"
+    }
+)
+
+print(response.json()['response'])  # 应该回答 "2+2"
 ```
